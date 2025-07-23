@@ -4,7 +4,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { GamesModule } from './games/games.module';
 import { CluesModule } from './clues/clues.module';
 import { PlayersModule } from './players/players.module';
-import { WebsocketsModule } from './websockets/websockets.module';
 import { AuthModule } from './auth/auth.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TasksModule } from './tasks/tasks.module';
@@ -39,7 +38,6 @@ import { TasksModule } from './tasks/tasks.module';
     GamesModule,
     CluesModule,
     PlayersModule,
-    WebsocketsModule,
     AuthModule,
     TasksModule,
    
