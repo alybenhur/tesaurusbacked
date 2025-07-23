@@ -1,122 +1,126 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-export type ClueDocument = Clue & Document;
-
 export enum ClueStatus {
   HIDDEN = 'hidden',
   DISCOVERED = 'discovered',
   REVEALED = 'revealed',
 }
 
-@Schema({ 
-  timestamps: true,
-  collection: 'clues'
-})
-export class Clue {
-  @Prop({ type: Types.ObjectId, ref: 'Game', required: true })
-  gameId: Types.ObjectId;
+@Schema()
+export class ClueLocation {
+  @Prop({ required: true })
+  latitude: number;
 
-  @Prop({ required: true, min: 1 })
-  order: number;
+  @Prop({ required: true })
+  longitude: number;
 
-  @Prop({ required: true, trim: true })
-  title: string;
+  @Prop()
+  address?: string;
 
-  @Prop({ required: true, trim: true })
-  description: string;
-
-  @Prop({ required: true, trim: true })
-  hint: string;
-
-  // Ubicación GPS de la pista
-  @Prop({
-    type: {
-      latitude: { type: Number, required: true },
-      longitude: { type: Number, required: true },
-      accuracy: { type: Number, default: 10 }, // metros
-    },
-    required: true,
-    _id: false
-  })
-  location: {
-    latitude: number;
-    longitude: number;
-    accuracy: number;
-  };
-
-  // Código QR único global
-  @Prop({ 
-    required: true, 
-    unique: true,
-    uppercase: true,
-    match: /^CLUE_[A-Z]{4}_[0-9]{4}$/
-  })
-  qrCode: string;
-
-  @Prop({ 
-    type: String, 
-    enum: ClueStatus, 
-    default: ClueStatus.HIDDEN 
-  })
-  status: ClueStatus;
-
-  // Radio de geofencing en metros
-  @Prop({ default: 50, min: 10, max: 500 })
-  radius: number;
-
-  // Información de descubrimiento
-  @Prop({ type: String })
-  discoveredBy?: string;
-
-  @Prop({ type: Date })
-  discoveredAt?: Date;
-
-  @Prop({ type: Date })
-  revealedAt?: Date;
-
-  // Programación de revelación automática
-  @Prop({ type: Date })
-  scheduledRevealAt?: Date;
-
-  // Metadatos adicionales
-  @Prop({
-    type: {
-      difficulty: { type: Number, min: 1, max: 5, default: 1 },
-      points: { type: Number, default: 100 },
-      category: { type: String, default: 'general' },
-      isActive: { type: Boolean, default: true }
-    },
-    _id: false
-  })
-  metadata: {
-    difficulty: number;
-    points: number;
-    category: string;
-    isActive: boolean;
-  };
-
-  // Verificación de ubicación física
-  @Prop({
-    type: {
-      verificationRequired: { type: Boolean, default: true },
-      lastVerifiedAt: { type: Date },
-      verifiedBy: { type: String }
-    },
-    _id: false
-  })
-  verification: {
-    verificationRequired: boolean;
-    lastVerifiedAt?: Date;
-    verifiedBy?: string;
-  };
+  @Prop()
+  description?: string;
 }
 
-export const ClueSchema = SchemaFactory.createForClass(Clue);
+@Schema({ timestamps: true })
+export class Clue extends Document {
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Game' })
+  gameId: Types.ObjectId;
 
-// Índices para optimizar consultas
-ClueSchema.index({ gameId: 1, order: 1 });
-ClueSchema.index({ qrCode: 1 }, { unique: true });
-ClueSchema.index({ status: 1 });
-ClueSchema.index({ 'location.latitude': 1, 'location.longitude': 1 });
-ClueSchema.index({ scheduledRevealAt: 1 });
+  @Prop({ required: true })
+  title: string;
+
+  @Prop({ required: true })
+  description: string;
+
+  @Prop()
+  hint?: string;
+
+   @Prop({ 
+    required: true, 
+    unique: true, 
+    index: true 
+  })
+  idPista: string;
+
+  @Prop({ type: ClueLocation })
+  location?: ClueLocation;
+
+  @Prop()
+  qrCode?: string;
+
+  @Prop({ required: true, default: 0 })
+  order: number;
+
+  @Prop({ default: false })
+  isCompleted: boolean;
+
+  @Prop({ enum: ClueStatus, default: ClueStatus.HIDDEN })
+  status: ClueStatus;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  discoveredBy?: Types.ObjectId;
+
+  @Prop()
+  discoveredAt?: Date;
+
+  @Prop()
+  range?: number;
+
+  @Prop()
+  answer?: string;
+
+  @Prop()
+  imageUrl?: string;
+
+  @Prop({ type: Object })
+  content?: Record<string, any>;
+
+  @Prop({ type: [String] })
+  hints?: string[];
+
+  @Prop()
+  pointsValue?: number;
+
+  @Prop()
+  timeLimit?: number;
+
+  @Prop({ required: true })
+  type: string;
+
+  // ✅ NUEVO: Campos para pistas colaborativas
+  @Prop({ default: false })
+  isCollaborative: boolean;
+
+  @Prop({ 
+    type: Number,
+    min: 2,
+    max: 20,
+    validate: {
+      validator: function(this: Clue, value: number) {
+        // Solo validar si la pista es colaborativa
+        return !this.isCollaborative || (value >= 2 && value <= 20);
+      },
+      message: 'requiredPlayers debe estar entre 2 y 20 para pistas colaborativas'
+    }
+  })
+  requiredPlayers?: number;
+
+  @Prop({ 
+  type: Number,
+  min: 1, // Mínimo 1 minuto
+  max: 60, // Máximo 60 minutos (1 hora)
+  validate: {
+    validator: function(this: Clue, value: number) {
+      return !this.isCollaborative || (value >= 1 && value <= 60);
+    },
+    message: 'collaborativeTimeLimit debe estar entre 1 minuto y 60 minutos (1 hora)'
+  }
+})
+collaborativeTimeLimit?: number; // Tiempo en minutos
+}
+
+// ✅ AGREGADO: Exportar el tipo ClueDocument
+export type ClueDocument = Clue & Document;
+
+export const ClueSchema = SchemaFactory.createForClass(Clue);

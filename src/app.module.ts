@@ -5,10 +5,15 @@ import { GamesModule } from './games/games.module';
 import { CluesModule } from './clues/clues.module';
 import { PlayersModule } from './players/players.module';
 import { WebsocketsModule } from './websockets/websockets.module';
+import { AuthModule } from './auth/auth.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { TasksModule } from './tasks/tasks.module';
+
 
 @Module({
   imports: [
     // Configuración de variables de entorno
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -35,6 +40,9 @@ import { WebsocketsModule } from './websockets/websockets.module';
     CluesModule,
     PlayersModule,
     WebsocketsModule,
+    AuthModule,
+    TasksModule,
+   
   ],
 })
 export class AppModule {}

@@ -1,60 +1,35 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max, Length } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsString, IsNotEmpty, IsNumber, Min, Max, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreateClueDto } from '../../clues/dto/create-clue.dto';
 
 export class CreateGameDto {
   @IsString()
   @IsNotEmpty()
-  @Length(3, 100)
-  @Transform(({ value }) => value?.trim())
   name: string;
 
   @IsString()
   @IsNotEmpty()
-  @Length(10, 500)
-  @Transform(({ value }) => value?.trim())
   description: string;
 
   @IsString()
   @IsNotEmpty()
   adminId: string;
 
-  @IsOptional()
   @IsNumber()
   @Min(2)
   @Max(20)
-  maxPlayers?: number = 8;
+  maxPlayers: number;
 
-  @IsOptional()
   @IsNumber()
-  @Min(60000) // Mínimo 1 minuto
-  @Max(1800000) // Máximo 30 minutos
-  revealDelayMs?: number = 600000; // 10 minutos por defecto
-}
+  @Min(0)
+  revealDelayMs: number;
 
-export class UpdateGameDto {
+  // NUEVO: Array de pistas para crear junto con el juego
   @IsOptional()
-  @IsString()
-  @Length(3, 100)
-  @Transform(({ value }) => value?.trim())
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(10, 500)
-  @Transform(({ value }) => value?.trim())
-  description?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(2)
-  @Max(20)
-  maxPlayers?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(60000)
-  @Max(1800000)
-  revealDelayMs?: number;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateClueDto)
+  clues?: CreateClueDto[];
 }
 
 export class JoinGameDto {
@@ -62,7 +37,7 @@ export class JoinGameDto {
   @IsNotEmpty()
   playerId: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  playerName: string;
+  playerName?: string;
 }

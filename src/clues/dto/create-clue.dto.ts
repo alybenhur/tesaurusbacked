@@ -1,132 +1,91 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max, Length, ValidateNested } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
-
-export class LocationDto {
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  latitude: number;
-
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  longitude: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(100)
-  accuracy?: number = 10;
-}
+import { IsString, IsNotEmpty, IsOptional, IsNumber, Min, Max, IsBoolean, ValidateIf } from 'class-validator';
 
 export class CreateClueDto {
   @IsString()
   @IsNotEmpty()
-  gameId: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @Length(3, 100)
-  @Transform(({ value }) => value?.trim())
   title: string;
 
   @IsString()
   @IsNotEmpty()
-  @Length(10, 500)
-  @Transform(({ value }) => value?.trim())
   description: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @Length(10, 300)
-  @Transform(({ value }) => value?.trim())
-  hint: string;
-
-  @ValidateNested()
-  @Type(() => LocationDto)
-  location: LocationDto;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(10)
-  @Max(500)
-  radius?: number = 50;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(5)
-  difficulty?: number = 1;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(50)
-  @Max(1000)
-  points?: number = 100;
-
   @IsOptional()
   @IsString()
-  category?: string = 'general';
-}
-
-export class ValidateQRDto {
-  @IsString()
-  @IsNotEmpty()
-  qrCode: string;
-
-  @IsString()
-  @IsNotEmpty()
-  playerId: string;
-
-  @IsString()
-  @IsNotEmpty()
-  gameId: string;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => LocationDto)
-  playerLocation?: LocationDto;
-}
-
-export class UpdateClueDto {
-  @IsOptional()
-  @IsString()
-  @Length(3, 100)
-  @Transform(({ value }) => value?.trim())
-  title?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(10, 500)
-  @Transform(({ value }) => value?.trim())
-  description?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(10, 300)
-  @Transform(({ value }) => value?.trim())
   hint?: string;
 
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => LocationDto)
-  location?: LocationDto;
+  @IsString()
+  @IsNotEmpty()
+  idPista: string;
 
   @IsOptional()
   @IsNumber()
-  @Min(10)
-  @Max(500)
-  radius?: number;
+  latitude?: number;
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
-  @Max(5)
-  difficulty?: number;
+  longitude?: number;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  locationDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  qrCode?: string;
 
   @IsOptional()
   @IsNumber()
-  @Min(50)
-  @Max(1000)
-  points?: number;
+  @Min(0)
+  order?: number;
+
+  @IsOptional()
+  @IsNumber()
+  range?: number;
+
+  @IsOptional()
+  @IsString()
+  answer?: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  content?: Record<string, any>;
+
+  @IsOptional()
+  hints?: string[];
+
+  @IsOptional()
+  @IsNumber()
+  pointsValue?: number;
+
+  @IsOptional()
+  @IsNumber()
+  timeLimit?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  type: string;
+
+  // ✅ NUEVOS CAMPOS: Para pistas colaborativas
+  @IsOptional()
+  @IsBoolean()
+  isCollaborative?: boolean;
+
+  @ValidateIf(o => o.isCollaborative === true)
+  @IsNumber()
+  @Min(2, { message: 'Se requieren al menos 2 jugadores para pistas colaborativas' })
+  @Max(20, { message: 'Máximo 20 jugadores para pistas colaborativas' })
+  requiredPlayers?: number;
+
+ @ValidateIf(o => o.isCollaborative === true)
+@IsNumber()
+@Min(1, { message: 'Tiempo mínimo: 1 minuto' })
+@Max(60, { message: 'Tiempo máximo: 60 minutos (1 hora)' })
+collaborativeTimeLimit?: number; // En minutos
 }

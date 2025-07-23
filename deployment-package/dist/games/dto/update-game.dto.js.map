@@ -1,0 +1,1 @@
+{"version":3,"file":"update-game.dto.js","sourceRoot":"","sources":["../../../src/games/dto/update-game.dto.ts"],"names":[],"mappings":";;;;;;;;;;;;AAAA,uDAAmD;AACnD,uDAAkD;AAClD,qDAAqD;AACrD,wDAAoD;AAEpD,MAAa,aAAc,SAAQ,IAAA,0BAAW,EAAC,+BAAa,CAAC;CAO5D;AAPD,sCAOC;AAJC;IAFC,IAAA,4BAAU,GAAE;IACZ,IAAA,wBAAM,EAAC,wBAAU,CAAC;;6CACC;AAGpB;IADC,IAAA,4BAAU,GAAE;8BACA,IAAI;iDAAC"}

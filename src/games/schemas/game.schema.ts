@@ -46,6 +46,10 @@ export class Game {
   @Prop({ type: Date })
   finishedAt?: Date;
 
+    // ✅ NUEVO CAMPO: ID del jugador ganador
+  @Prop({ type: String, required: false })
+  winnerId?: string;
+
   @Prop({ default: 8, min: 2, max: 20 })
   maxPlayers: number;
 
