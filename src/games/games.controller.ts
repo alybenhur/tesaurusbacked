@@ -12,12 +12,17 @@ import {
   ValidationPipe,
   BadRequestException,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { GamesService } from './games.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { GameStatus } from './schemas/game.schema';
 import { DiscoverClueDto } from './dto/discover-clue.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { UserRole } from 'src/auth/schemas/user.schema';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
 
 // DTO para unirse al juego
 export class JoinGameDto {
@@ -30,6 +35,8 @@ export class GamesController {
   constructor(private readonly gamesService: GamesService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
   async create(@Body(ValidationPipe) createGameDto: CreateGameDto) {
     console.log(createGameDto)
@@ -50,6 +57,8 @@ export class GamesController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   async findAll(
     @Query('status') status?: string,
     @Query('admin') adminId?: string,
@@ -88,6 +97,8 @@ export class GamesController {
   }
 
   @Get('active')
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
      async findActiveGames() {
        try {
          const games = await this.gamesService.findActiveGames();
@@ -107,6 +118,8 @@ export class GamesController {
      }
 
   @Get('available')
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async findAvailable() {
     try {
       const games = await this.gamesService.findAll();
@@ -132,6 +145,8 @@ export class GamesController {
   }
 
   @Get(':id')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async findOne(@Param('id') id: string) {
     try {
       const game = await this.gamesService.findOne(id);
@@ -153,6 +168,8 @@ export class GamesController {
   }
 
   @Get(':id/stats')
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getGameStats(@Param('id') id: string) {
     try {
       const game = await this.gamesService.findOne(id);
@@ -192,6 +209,8 @@ export class GamesController {
   }
 
   @Patch(':id')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async update(
     @Param('id') id: string,
     @Body(ValidationPipe) updateGameDto: UpdateGameDto,
@@ -216,6 +235,8 @@ export class GamesController {
   }
 
   @Post(':id/start')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async startGame(@Param('id') id: string) {
     console.log(id)
@@ -239,6 +260,8 @@ export class GamesController {
   }
 
 @Post(':id/join')
+@UseGuards(JwtAuthGuard,RolesGuard)
+@Roles(UserRole.PLAYER)
 @HttpCode(HttpStatus.OK)
 async joinGame(
   @Param('id') id: string,
@@ -294,6 +317,8 @@ async joinGame(
 */
 
   @Post(':id/leave')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.PLAYER)
   @HttpCode(HttpStatus.OK)
   async leaveGame(
     @Param('id') id: string,
@@ -323,6 +348,8 @@ async joinGame(
   }
 
   @Delete(':id')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async remove(@Param('id') id: string) {
     try {
@@ -344,6 +371,8 @@ async joinGame(
   }
 
   @Get(':id/players')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getGamePlayers(@Param('id') id: string) {
     try {
       const game = await this.gamesService.findOne(id);
@@ -380,6 +409,8 @@ async joinGame(
 
   // ✅ NUEVO: Endpoint para obtener las pistas de un juego
   @Get(':id/clues')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   async getGameClues(@Param('id') id: string) {
     try {
       console.log(id)
@@ -409,6 +440,8 @@ async joinGame(
 
   // ✅ NUEVO: Endpoint para finalizar un juego
   @Post(':id/finish')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async finishGame(@Param('id') id: string) {
     try {
@@ -443,6 +476,8 @@ async joinGame(
 
   // ✅ NUEVO: Endpoint para cancelar un juego
   @Post(':id/cancel')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async cancelGame(@Param('id') id: string) {
     try {
@@ -478,6 +513,8 @@ async joinGame(
 
  // DELETE /api/games/:id/clues/:clueId: Elimina una pista específica de un juego
   @Delete(':id/clues/:clueId')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
 @HttpCode(HttpStatus.OK)
 async removeClueFromGame(
   @Param('id') gameId: string,
@@ -503,6 +540,8 @@ async removeClueFromGame(
 }
 
 @Get('player/:playerId')
+ @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getPlayerGames(@Param('playerId') playerId: string) {
     try {
       console.log("llego aqui")
@@ -522,6 +561,8 @@ async removeClueFromGame(
   }
 
   @Post('clues/discover')
+   @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.PLAYER)
 @HttpCode(HttpStatus.OK)
 async discoverClue(
   @Body(ValidationPipe) discoverClueDto: DiscoverClueDto,
@@ -553,6 +594,8 @@ async discoverClue(
 }
 
 @Get(':gameId/clues/:clueId/collaborative-status')
+ @UseGuards(JwtAuthGuard,RolesGuard)
+ @Roles(UserRole.PLAYER)
 async getCollaborativeStatus(
   @Param('gameId') gameId: string,
   @Param('clueId') clueId: string,
@@ -581,6 +624,8 @@ async getCollaborativeStatus(
  * GET /api/games/player/:playerId/wins
  */
 @Get('player/:playerId/wins')
+ @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
 async getPlayerWins(@Param('playerId') playerId: string) {
   try {
     const wins = await this.gamesService.getPlayerWins(playerId);
@@ -602,6 +647,8 @@ async getPlayerWins(@Param('playerId') playerId: string) {
  * Obtiene estadísticas generales de achievements de un jugador
  */
 @Get('player/:playerId/achievements/stats')
+@UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
 async getPlayerAchievementStats(@Param('playerId') playerId: string) {
   try {
     const stats = await this.gamesService.getPlayerAchievementStats(playerId);

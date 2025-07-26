@@ -114,8 +114,8 @@ export class AuthController {
 
   // Endpoints administrativos
   @Get('users')
-  //@UseGuards(JwtAuthGuard, RolesGuard)
-  //@Roles(UserRole.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   async getAllUsers() {
     const users = await this.authService.getAllUsers();
     return {
@@ -185,7 +185,8 @@ export class AuthController {
   }
 
   @Post('users/:id/add-clue/:clueId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   async addDiscoveredClue(
     @Param('id') userId: string,
     @Param('clueId') clueId: string,
@@ -198,7 +199,8 @@ export class AuthController {
   }
 
   @Post('users/:id/add-score')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.PLAYER)
   async addScore(
     @Param('id') userId: string,
     @Body() body: { points: number },
