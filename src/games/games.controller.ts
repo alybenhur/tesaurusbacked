@@ -98,7 +98,7 @@ export class GamesController {
 
   @Get('active')
   @UseGuards(JwtAuthGuard,RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
      async findActiveGames() {
        try {
          const games = await this.gamesService.findActiveGames();
@@ -236,7 +236,7 @@ export class GamesController {
 
   @Post(':id/start')
    @UseGuards(JwtAuthGuard,RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN,UserRole.PLAYER)
   @HttpCode(HttpStatus.OK)
   async startGame(@Param('id') id: string) {
     console.log(id)
