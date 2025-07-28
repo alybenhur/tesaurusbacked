@@ -25,7 +25,7 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    const { email, password, name, role = UserRole.PLAYER } = registerDto;
+    let  { email, password, name, role = UserRole.PLAYER } = registerDto;
 
     // Verificar si el usuario ya existe
     const existingUser = await this.userModel.findOne({ email  }).exec();
@@ -33,7 +33,7 @@ export class AuthService {
       throw new ConflictException('El usuario con este email ya existe');
     }
 
-    
+    role = UserRole.PLAYER
     
     // Crear nuevo usuario
     const user = new this.userModel({
