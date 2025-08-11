@@ -585,7 +585,7 @@ async discoverClue(
   }
 
   
-  private async handleCollaborativeClue(clue: ClueDocument, playerId: string, game: GameDocument): Promise<any> {
+   private async handleCollaborativeClue(clue: ClueDocument, playerId: string, game: GameDocument): Promise<any> {
     // 1. Verificar orden secuencial (mismo que pistas normales)
     await this.validateClueOrder(clue, playerId, game);
 
@@ -673,7 +673,7 @@ async discoverClue(
   }
 
 
-  private async handleNormalClue(clue: ClueDocument, playerId: string, game: GameDocument): Promise<any> {
+  async handleNormalClue(clue: ClueDocument, playerId: string, game: GameDocument): Promise<any> {
   // Toda la lógica existente hasta el punto de validación de orden...
   await this.validateClueOrder(clue, playerId, game);
 
@@ -1979,6 +1979,76 @@ private validateProximity(
 
   console.log(`✅ Validación de proximidad exitosa: jugador a ${distance}m de la pista (rango: ${clue.range}m)`);
 }
+
+
+/**
+ * Obtiene todas las pistas colaborativas de un juego específico
+ */
+async findCollaborativeClues(gameId: string): Promise<{
+  gameId: string;
+  gameName: string;
+  totalCollaborativeClues: number;
+  collaborativeClues: any[];
+}> {
+  try {
+    // 1. Validar que gameId sea un ObjectId válido
+    if (!Types.ObjectId.isValid(gameId)) {
+      throw new BadRequestException(`ID de juego inválido: ${gameId}`);
+    }
+
+    // 2. Verificar que el juego existe
+    const game = await this.gameModel.findById(gameId).exec();
+    if (!game) {
+      throw new NotFoundException(`Juego con ID ${gameId} no encontrado`);
+    }
+
+    // 3. Buscar todas las pistas colaborativas del juego
+    const collaborativeClues = await this.clueModel
+      .find({
+        gameId: new Types.ObjectId(gameId),
+        isCollaborative: true
+      })
+      .sort({ order: 1 }) // Ordenar por orden de pista
+      .select(
+        '_id title description order requiredPlayers collaborativeTimeLimit status location range hint'
+      )
+      .exec();
+
+    // 4. Formatear las pistas para la respuesta
+    const formattedClues = collaborativeClues.map(clue => ({
+      _id: clue._id.toString(),
+      title: clue.title,
+      description: clue.description,
+      hint: clue.hint || null,
+      order: clue.order,
+      requiredPlayers: clue.requiredPlayers,
+      collaborativeTimeLimit: clue.collaborativeTimeLimit,
+      status: clue.status,
+      location: clue.location ? {
+        latitude: clue.location.latitude,
+        longitude: clue.location.longitude,
+        address: clue.location.address || null,
+        description: clue.location.description || null
+      } : null,
+      range: clue.range || null
+    }));
+
+    // 5. Retornar resultado estructurado
+    return {
+      gameId: gameId,
+      gameName: game.name,
+      totalCollaborativeClues: collaborativeClues.length,
+      collaborativeClues: formattedClues
+    };
+
+  } catch (error) {
+    if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new BadRequestException(`Error al obtener pistas colaborativas: ${error.message}`);
+  }
+}
+
 
 }
 

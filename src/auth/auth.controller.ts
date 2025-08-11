@@ -23,6 +23,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { UserDocument, UserRole } from './schemas/user.schema';
 import { plainToClass } from 'class-transformer';
 import { LoginResponseDto } from './dto/login-response.dto';
+import { RegisterSponsorDto } from './dto/register-sponsor.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -39,6 +40,31 @@ export class AuthController {
       refreshToken: result.refreshToken,
     };
   }
+
+   @Post('register/sponsor')
+  @HttpCode(HttpStatus.CREATED)
+  async registerSponsor(@Body(ValidationPipe) registerSponsorDto: RegisterSponsorDto) {
+    console.log(registerSponsorDto)
+    const result = await this.authService.registerSponsor(registerSponsorDto);
+    return {
+      message: 'Sponsor registrado exitosamente',
+      user: result.user,
+      token: result.token,
+      refreshToken: result.refreshToken,
+    };
+  }
+  
+  @Get('sponsor/profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SPONSOR)
+  async getSponsorProfile(@CurrentUser() user: UserDocument) {
+    const profile = await this.authService.getSponsorProfile(user._id.toString());
+    return {
+      message: 'Perfil del sponsor obtenido exitosamente',
+      ...profile,
+    };
+  }
+
 
  @Post('login')
   async login(@Body() loginDto: LoginDto) {

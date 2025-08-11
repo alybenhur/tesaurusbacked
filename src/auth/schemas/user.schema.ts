@@ -1,6 +1,6 @@
 // src/auth/schemas/user.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export type UserDocument = User & Document;
 
@@ -8,6 +8,7 @@ export enum UserRole {
   ADMIN = 'admin',
   PLAYER = 'player',
   MODERATOR = 'moderator',
+  SPONSOR ='sponsor'
 }
 
 @Schema({ timestamps: true })
@@ -45,6 +46,15 @@ export class User {
   @Prop({ default: Date.now })
   updatedAt?: Date;
   // Campos calculados
+
+    @Prop({ type: Types.ObjectId, ref: 'Sponsor', required: false })
+  sponsorId?: Types.ObjectId; // ← Vinculación opcional con Sponsor
+
+  // Getter específico para sponsors
+  get isSponsor(): boolean {
+    return this.role === UserRole.SPONSOR;
+  }
+  
   get canCreateGames(): boolean {
     return this.role === UserRole.ADMIN || this.role === UserRole.MODERATOR;
   }

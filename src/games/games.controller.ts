@@ -642,6 +642,29 @@ async getPlayerWins(@Param('playerId') playerId: string) {
   }
 }
 
+@Get(':id/collaborative-clues')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+async getGameCollaborativeClues(@Param('id') id: string) {
+  try {
+    const result = await this.gamesService.findCollaborativeClues(id);
+    return {
+      success: true,
+      message: 'Pistas colaborativas obtenidas exitosamente',
+      data: result,
+    };
+  } catch (error) {
+    if (error instanceof NotFoundException) {
+      throw error;
+    }
+    throw new BadRequestException({
+      success: false,
+      message: 'Error al obtener las pistas colaborativas del juego',
+      error: error.message,
+    });
+  }
+}
+
 /**
  * GET /api/games/player/:playerId/achievements/stats
  * Obtiene estadísticas generales de achievements de un jugador

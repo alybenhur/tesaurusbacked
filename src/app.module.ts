@@ -7,6 +7,8 @@ import { PlayersModule } from './players/players.module';
 import { AuthModule } from './auth/auth.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TasksModule } from './tasks/tasks.module';
+import { SponsorModule } from './sponsor/sponsor.module';
+import { GamesponsorModule } from './gamesponsor/gamesponsor.module';
 
 
 @Module({
@@ -40,6 +42,8 @@ import { TasksModule } from './tasks/tasks.module';
     PlayersModule,
     AuthModule,
     TasksModule,
+    SponsorModule,
+    GamesponsorModule,
    
   ],
 })
