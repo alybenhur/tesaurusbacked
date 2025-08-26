@@ -66,8 +66,10 @@ export class AuthController {
   }
 
 
+
  @Post('login')
   async login(@Body() loginDto: LoginDto) {
+    console.log(loginDto)
     const result = await this.authService.login(loginDto);
     
     // Convertir el usuario a un formato serializable

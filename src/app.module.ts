@@ -9,6 +9,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { TasksModule } from './tasks/tasks.module';
 import { SponsorModule } from './sponsor/sponsor.module';
 import { GamesponsorModule } from './gamesponsor/gamesponsor.module';
+import { AuctionModule } from './pujas/pujas.module';
 
 
 @Module({
@@ -44,6 +45,7 @@ import { GamesponsorModule } from './gamesponsor/gamesponsor.module';
     TasksModule,
     SponsorModule,
     GamesponsorModule,
+    AuctionModule,
    
   ],
 })
