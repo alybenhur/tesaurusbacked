@@ -10,10 +10,12 @@ import { User, UserSchema } from './schemas/user.schema';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { SponsorModule } from 'src/sponsor/sponsor.module';
+import { PasswordResetToken, PasswordResetTokenSchema } from './schemas/password-reset-token.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema },
+         { name: PasswordResetToken.name, schema: PasswordResetTokenSchema } ]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

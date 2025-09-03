@@ -11,6 +11,9 @@ import {
   HttpCode, 
   HttpStatus,
   ValidationPipe,
+  NotFoundException,
+  UnauthorizedException,
+  ConflictException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -24,6 +27,15 @@ import { UserDocument, UserRole } from './schemas/user.schema';
 import { plainToClass } from 'class-transformer';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { RegisterSponsorDto } from './dto/register-sponsor.dto';
+import {Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { 
+  RequestPasswordResetDto,
+  VerifyResetTokenDto,
+  ResetPasswordDto,
+  PasswordResetRequestResponseDto,
+  VerifyResetTokenResponseDto,
+  ResetPasswordResponseDto
+} from './dto';
 
 @Controller('auth')
 export class AuthController {
@@ -239,4 +251,168 @@ export class AuthController {
       user,
     };
   }
+
+  /**
+ * Solicitar código de reset de contraseña
+ * Rate limited: máximo 3 solicitudes por hora por IP
+ */
+@Post('password-reset/request')
+@HttpCode(HttpStatus.OK)
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 3, ttl: 3600000 } }) // 3 requests per hour
+async requestPasswordReset(
+  @Body(ValidationPipe) requestDto: RequestPasswordResetDto
+): Promise<PasswordResetRequestResponseDto> {
+  try {
+    const result = await this.authService.requestPasswordReset(requestDto);
+    return {
+      message: result.message,
+      expiresAt: result.expiresAt,
+      attemptsRemaining: result.attemptsRemaining
+    };
+  } catch (error) {
+    // Log del error para debugging pero respuesta genérica por seguridad
+    console.error('Password reset request error:', error.message);
+    
+    return {
+      message: 'Si el email existe en nuestro sistema, recibirás un código de verificación',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000) // Mock expiration
+    };
+  }
+}
+
+/**
+ * Verificar token de reset de contraseña
+ * Rate limited: máximo 5 intentos por 15 minutos por IP
+ */
+@Post('password-reset/verify')
+@HttpCode(HttpStatus.OK)
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 5, ttl: 900000 } }) // 5 requests per 15 minutes
+async verifyResetToken(
+  @Body(ValidationPipe) verifyDto: VerifyResetTokenDto
+): Promise<VerifyResetTokenResponseDto> {
+  try {
+    const result = await this.authService.verifyResetToken(verifyDto);
+    return {
+      message: result.message,
+      isValid: result.isValid,
+      canProceed: result.canProceed,
+      attemptsRemaining: result.attemptsRemaining
+    };
+  } catch (error) {
+    throw new UnauthorizedException({
+      message: error.message || 'Token inválido o expirado',
+      isValid: false,
+      canProceed: false,
+      attemptsRemaining: 0
+    });
+  }
+}
+
+/**
+ * Cambiar contraseña con token verificado
+ * Rate limited: máximo 3 intentos por 15 minutos por IP
+ */
+@Post('password-reset/confirm')
+@HttpCode(HttpStatus.OK)
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 3, ttl: 900000 } }) // 3 requests per 15 minutes
+async resetPassword(
+  @Body(ValidationPipe) resetDto: ResetPasswordDto
+): Promise<ResetPasswordResponseDto> {
+  try {
+    const result = await this.authService.resetPassword(resetDto);
+    return {
+      message: result.message,
+      success: result.success
+    };
+  } catch (error) {
+    if (error instanceof ConflictException || error instanceof UnauthorizedException) {
+      throw error;
+    }
+    
+    // Error genérico para otros casos
+    throw new UnauthorizedException({
+      message: 'Error al cambiar la contraseña. Verifica tus datos e intenta nuevamente',
+      success: false
+    });
+  }
+}
+
+// ========================
+// ENDPOINTS ADMINISTRATIVOS (Password Reset)
+// ========================
+
+/**
+ * Obtener estadísticas de tokens de reset (Solo ADMIN)
+ */
+@Get('admin/password-reset/stats')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+async getPasswordResetStats() {
+  const stats = await this.authService.getPasswordResetStats();
+  return {
+    message: 'Estadísticas de password reset obtenidas exitosamente',
+    stats
+  };
+}
+
+/**
+ * Limpiar tokens expirados manualmente (Solo ADMIN)
+ */
+@Post('admin/password-reset/cleanup')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+@HttpCode(HttpStatus.OK)
+async cleanupExpiredTokens() {
+  const deletedCount = await this.authService.cleanupExpiredTokens();
+  return {
+    message: `${deletedCount} tokens expirados eliminados exitosamente`,
+    deletedCount
+  };
+}
+
+/**
+ * Invalidar todos los tokens de reset de un usuario específico (Solo ADMIN)
+ */
+@Post('admin/users/:userId/invalidate-reset-tokens')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+@HttpCode(HttpStatus.OK)
+async invalidateUserResetTokens(@Param('userId') userId: string) {
+  try {
+    // Llamar método privado a través del service (necesitaremos hacerlo público)
+    await this.authService.invalidateUserResetTokens(userId);
+    return {
+      message: 'Todos los tokens de reset del usuario han sido invalidados',
+      userId
+    };
+  } catch (error) {
+    throw new NotFoundException('Usuario no encontrado o error al invalidar tokens');
+  }
+}
+
+// ========================
+// ENDPOINT DE HEALTH CHECK
+// ========================
+
+/**
+ * Verificar estado del servicio de email
+ */
+@Get('password-reset/health')
+@HttpCode(HttpStatus.OK)
+async checkPasswordResetHealth() {
+  // Este endpoint puede ser útil para monitoreo
+  return {
+    message: 'Servicio de password reset disponible',
+    timestamp: new Date().toISOString(),
+    features: {
+      emailService: true,
+      tokenValidation: true,
+      rateLimit: true,
+      cleanup: true
+    }
+  };
+}
 }

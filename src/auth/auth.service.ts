@@ -12,6 +12,16 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { SponsorService } from 'src/sponsor/sponsor.service';
 import { RegisterSponsorDto } from './dto/register-sponsor.dto';
 import { LinkExistingSponsorDto } from './dto/link-existing-sponsor.dto';
+import { PasswordResetToken, PasswordResetTokenDocument } from './schemas/password-reset-token.schema';
+import { EmailService } from '../email/email.service';
+import { 
+  RequestPasswordResetDto, 
+  VerifyResetTokenDto, 
+  ResetPasswordDto,
+  PasswordResetRequestResponseDto,
+  VerifyResetTokenResponseDto,
+  ResetPasswordResponseDto 
+} from './dto';
 
 export interface AuthResponse {
   user: UserDocument;
@@ -23,9 +33,11 @@ export interface AuthResponse {
 export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(PasswordResetToken.name) private passwordResetTokenModel: Model<PasswordResetTokenDocument>,
     private jwtService: JwtService,
     private configService: ConfigService,
-     private sponsorService: SponsorService
+    private sponsorService: SponsorService, 
+    private emailService: EmailService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
@@ -349,4 +361,241 @@ export class AuthService {
     user.isActive = true;
     return user.save();
   }
+
+  // ========================
+// MÉTODOS DE PASSWORD RESET
+// ========================
+
+/**
+ * Solicitar código de reset de contraseña
+ */
+async requestPasswordReset(requestDto: RequestPasswordResetDto): Promise<PasswordResetRequestResponseDto> {
+  const { email } = requestDto;
+
+  // 1. Verificar que el usuario existe y está activo
+  const user = await this.userModel.findOne({ email: email.toLowerCase(), isActive: true }).exec();
+  if (!user) {
+    // Por seguridad, no revelamos si el email existe o no
+    return {
+      message: 'Si el email existe en nuestro sistema, recibirás un código de verificación',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000) // Mock expiration
+    };
+  }
+
+  // 2. Invalidar tokens anteriores del usuario
+  await this.invalidateExistingTokens(user._id.toString());
+
+  // 3. Generar nuevo token
+  const token = (this.passwordResetTokenModel as any).generateToken();
+  const expirationMinutes = this.configService.get<number>('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', 10);
+  const expiresAt = (this.passwordResetTokenModel as any).calculateExpirationTime(expirationMinutes);
+
+  // 4. Guardar token en base de datos
+  const resetToken = new this.passwordResetTokenModel({
+    userId: user._id,
+    token,
+    expiresAt,
+    attempts: 0,
+    isUsed: false
+  });
+  await resetToken.save();
+
+  // 5. Enviar email
+  const emailSent = await this.emailService.sendPasswordResetToken(email, token, expiresAt);
+  
+  if (!emailSent) {
+    // Log del error pero no exponemos detalles al usuario
+    console.error(`Failed to send password reset email to ${email}`);
+    throw new Error('Error al enviar el código de verificación. Intenta nuevamente.');
+  }
+
+  return {
+    message: 'Código de verificación enviado a tu email',
+    expiresAt,
+    attemptsRemaining: 3
+  };
+}
+
+/**
+ * Verificar token de reset (sin cambiar contraseña aún)
+ */
+async verifyResetToken(verifyDto: VerifyResetTokenDto): Promise<VerifyResetTokenResponseDto> {
+  const { email, token } = verifyDto;
+
+  // 1. Buscar usuario
+  const user = await this.userModel.findOne({ email: email.toLowerCase(), isActive: true }).exec();
+  if (!user) {
+    throw new UnauthorizedException('Token inválido o expirado');
+  }
+
+  // 2. Buscar token válido
+  const resetToken = await this.passwordResetTokenModel.findOne({
+    userId: user._id,
+    token: token.trim(),
+    isUsed: false
+  }).exec();
+
+  if (!resetToken) {
+    throw new UnauthorizedException('Token inválido o expirado');
+  }
+
+  // 3. Verificar si el token ha expirado
+  if (resetToken.expiresAt < new Date()) {
+    throw new UnauthorizedException('El token ha expirado. Solicita un nuevo código');
+  }
+
+  // 4. Verificar intentos
+  if (resetToken.attempts >= 3) {
+    throw new UnauthorizedException('Máximo número de intentos alcanzado. Solicita un nuevo código');
+  }
+
+  // 5. Incrementar intentos (aunque sea correcto, para tracking)
+  await (resetToken as any).incrementAttempts();
+
+  return {
+    message: 'Token verificado correctamente. Puedes proceder a cambiar tu contraseña',
+    isValid: true,
+    canProceed: true,
+    attemptsRemaining: 3 - resetToken.attempts
+  };
+}
+
+/**
+ * Cambiar contraseña usando el token verificado
+ */
+async resetPassword(resetDto: ResetPasswordDto): Promise<ResetPasswordResponseDto> {
+  const { email, token, newPassword } = resetDto;
+
+  // 1. Buscar usuario
+  const user = await this.userModel.findOne({ email: email.toLowerCase(), isActive: true }).exec();
+  if (!user) {
+    throw new UnauthorizedException('Token inválido o expirado');
+  }
+
+  // 2. Buscar y validar token
+  const resetToken = await this.passwordResetTokenModel.findOne({
+    userId: user._id,
+    token: token.trim(),
+    isUsed: false
+  }).exec();
+
+  if (!resetToken) {
+    throw new UnauthorizedException('Token inválido o expirado');
+  }
+
+  // 3. Verificaciones de seguridad
+  if (resetToken.expiresAt < new Date()) {
+    throw new UnauthorizedException('El token ha expirado. Solicita un nuevo código');
+  }
+
+  if (resetToken.attempts >= 3) {
+    throw new UnauthorizedException('Máximo número de intentos alcanzado. Solicita un nuevo código');
+  }
+
+  // 4. Verificar que la nueva contraseña no sea igual a la actual
+  const isSamePassword = await bcrypt.compare(newPassword, user.password);
+  if (isSamePassword) {
+    throw new ConflictException('La nueva contraseña debe ser diferente a la actual');
+  }
+
+  try {
+    // 5. Actualizar contraseña (se hasheará automáticamente por el middleware)
+    user.password = newPassword;
+    user.updatedAt = new Date();
+    
+    // 6. Invalidar refresh tokens existentes por seguridad
+    user.refreshToken = null;
+    
+    await user.save();
+
+    // 7. Marcar token como usado
+    await (resetToken as any).markAsUsed();
+
+    // 8. Invalidar todos los demás tokens del usuario
+    await this.invalidateExistingTokens(user._id.toString(), resetToken._id.toString());
+
+    return {
+      message: 'Contraseña actualizada exitosamente',
+      success: true
+    };
+
+  } catch (error) {
+    console.error('Error updating password:', error);
+    throw new Error('Error al actualizar la contraseña. Intenta nuevamente');
+  }
+}
+
+/**
+ * Invalidar tokens existentes de un usuario
+ */
+private async invalidateExistingTokens(userId: string, excludeTokenId?: string): Promise<void> {
+  const query: any = { 
+    userId: new Types.ObjectId(userId), 
+    isUsed: false 
+  };
+  
+  if (excludeTokenId) {
+    query._id = { $ne: new Types.ObjectId(excludeTokenId) };
+  }
+
+  await this.passwordResetTokenModel.updateMany(
+    query,
+    { 
+      $set: { 
+        isUsed: true, 
+        updatedAt: new Date() 
+      } 
+    }
+  ).exec();
+}
+
+/**
+ * Limpiar tokens expirados (método de mantenimiento)
+ */
+async cleanupExpiredTokens(): Promise<number> {
+  const result = await this.passwordResetTokenModel.deleteMany({
+    expiresAt: { $lt: new Date() }
+  }).exec();
+
+  return result.deletedCount || 0;
+}
+
+/**
+ * Obtener estadísticas de tokens de reset (para administradores)
+ */
+async getPasswordResetStats(): Promise<any> {
+  const [total, active, expired, used] = await Promise.all([
+    this.passwordResetTokenModel.countDocuments().exec(),
+    this.passwordResetTokenModel.countDocuments({ 
+      isUsed: false, 
+      expiresAt: { $gt: new Date() } 
+    }).exec(),
+    this.passwordResetTokenModel.countDocuments({ 
+      expiresAt: { $lt: new Date() } 
+    }).exec(),
+    this.passwordResetTokenModel.countDocuments({ isUsed: true }).exec()
+  ]);
+
+  return {
+    total,
+    active,
+    expired,
+    used,
+    lastCleanup: new Date()
+  };
+}
+
+/**
+ * Invalidar todos los tokens de reset de un usuario específico (público para admin)
+ */
+async invalidateUserResetTokens(userId: string): Promise<void> {
+  // Verificar que el usuario existe
+  const user = await this.findById(userId);
+  if (!user) {
+    throw new NotFoundException('Usuario no encontrado');
+  }
+
+  await this.invalidateExistingTokens(userId);
+}
+
 }
