@@ -23,6 +23,7 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { UserRole } from 'src/auth/schemas/user.schema';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { UpdateClueDto } from 'src/clues/dto/update-clue.dto';
 
 // DTO para unirse al juego
 export class JoinGameDto {
@@ -692,6 +693,42 @@ async getPlayerAchievementStats(@Param('playerId') playerId: string) {
   }
 }
 
-
+/**
+   * PATCH /api/games/:gameId/clues/:clueId
+   * Actualiza una pista específica de un juego
+   * Solo permitido cuando el juego está en estado WAITING
+   */
+  @Patch(':gameId/clues/:clueId')
+  //@UseGuards(JwtAuthGuard, RolesGuard)
+  //@Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async updateClue(
+    @Param('gameId') gameId: string,
+    @Param('clueId') clueId: string,
+    @Body(ValidationPipe) updateClueDto: UpdateClueDto,
+  ) {
+    try {
+      const updatedClue = await this.gamesService.updateClue(gameId, clueId, updateClueDto);
+      
+      return {
+        success: true,
+        message: 'Pista actualizada exitosamente',
+        data: {
+          clue: updatedClue,
+          gameId: gameId,
+          updatedFields: Object.keys(updateClueDto).filter(key => updateClueDto[key] !== undefined)
+        },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al actualizar la pista',
+        error: error.message,
+      });
+    }
+  }
 
 }

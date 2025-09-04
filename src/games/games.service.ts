@@ -2049,6 +2049,101 @@ async findCollaborativeClues(gameId: string): Promise<{
   }
 }
 
+ /**
+   * Actualiza una pista específica de un juego
+   * Solo permite modificar pistas cuando el juego está en estado WAITING
+   */
+  async updateClue(gameId: string, clueId: string, updateClueDto: any): Promise<Clue> {
+    try {
+      // 1. Validar que los IDs sean ObjectId válidos
+      if (!Types.ObjectId.isValid(gameId)) {
+        throw new BadRequestException(`ID de juego inválido: ${gameId}`);
+      }
+      if (!Types.ObjectId.isValid(clueId)) {
+        throw new BadRequestException(`ID de pista inválido: ${clueId}`);
+      }
+
+      // 2. Verificar que el juego existe
+      const game = await this.gameModel.findById(gameId).exec();
+      if (!game) {
+        throw new NotFoundException(`Juego con ID ${gameId} no encontrado`);
+      }
+
+      // 3. VALIDACIÓN CRÍTICA: Solo permitir modificación si el juego está en WAITING
+      if (game.status !== GameStatus.WAITING) {
+        throw new BadRequestException(
+          `No se pueden modificar pistas de un juego en estado ${game.status}. Solo se permite en estado WAITING`
+        );
+      }
+
+      // 4. Verificar que la pista existe
+      const existingClue = await this.clueModel.findById(clueId).exec();
+      if (!existingClue) {
+        throw new NotFoundException(`Pista con ID ${clueId} no encontrada`);
+      }
+
+      // 5. Verificar que la pista pertenece al juego especificado
+      if (existingClue.gameId.toString() !== gameId) {
+        throw new BadRequestException('La pista no pertenece al juego especificado');
+      }
+
+      // 6. Preparar datos de actualización
+      const updateData: any = {};
+
+      // Actualizar campos básicos si se proporcionan
+      if (updateClueDto.title !== undefined) {
+        updateData.title = updateClueDto.title;
+      }
+      if (updateClueDto.description !== undefined) {
+        updateData.description = updateClueDto.description;
+      }
+      if (updateClueDto.imageUrl !== undefined) {
+        updateData.imageUrl = updateClueDto.imageUrl;
+      }
+
+      // Manejar actualización de ubicación preservando campos existentes
+      if (updateClueDto.location) {
+        updateData.location = {
+          latitude: updateClueDto.location.latitude,
+          longitude: updateClueDto.location.longitude,
+          // Preservar campos opcionales existentes
+          address: existingClue.location?.address,
+          description: existingClue.location?.description
+        };
+      }
+
+      // 7. Actualizar la pista
+      const updatedClue = await this.clueModel
+        .findByIdAndUpdate(clueId, updateData, { new: true })
+        .exec();
+
+      if (!updatedClue) {
+        throw new NotFoundException('Error al actualizar la pista');
+      }
+
+      // 8. Si se modificó la ubicación, recalcular el área del juego
+      if (updateClueDto.location) {
+        const gameArea = await this.calculateGameArea(game.clues as Types.ObjectId[]);
+        if (gameArea) {
+          game.gameArea = gameArea;
+          game.metadata.lastActivity = new Date();
+          await game.save();
+        }
+      } else {
+        // Solo actualizar lastActivity si no se modificó ubicación
+        game.metadata.lastActivity = new Date();
+        await game.save();
+      }
+
+      return updatedClue;
+
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Error al actualizar la pista: ${error.message}`);
+    }
+  }
 
 }
 
