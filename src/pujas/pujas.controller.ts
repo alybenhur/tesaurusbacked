@@ -9,7 +9,8 @@ import {
   UseGuards,
   ValidationPipe,
   BadRequestException, 
-  Put
+  Put,
+  HttpException
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 
@@ -22,6 +23,7 @@ import {
   SponsorActiveBidResponseDto,
   AvailableGamesResponseDto 
 } from './dto/auction.dto';
+import { AuctionResultsResponseDto } from './dto/auction-results.dto';
 
 @Controller('auctions')
 export class AuctionController {
@@ -141,4 +143,30 @@ export class AuctionController {
     ) {
       return this.auctionService.updateBid(gameId, updateBidDto);
     }
+
+  @Get('game/:gameId/results')
+   async getAuctionResults(
+    @Param('gameId') gameId: string
+  ): Promise<AuctionResultsResponseDto> {
+    try {
+      return await this.auctionService.getAuctionResults(gameId);
+    } catch (error) {
+      // Log del error para debugging
+      console.error(`Error getting auction results for game ${gameId}:`, error);
+      
+      // Re-lanzar errores conocidos (NotFoundException)
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      
+      // Manejar errores inesperados
+      throw new HttpException(
+        'Internal server error while getting auction results',
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  
+  
 }

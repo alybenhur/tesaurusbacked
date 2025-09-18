@@ -20,8 +20,16 @@ import {
   GameSponsorResponseDto,
   SponsorStatsDto,
   PlayerSponsorHistoryDto,
-  ValidateSponsorUnlockDto
+  ValidateSponsorUnlockDto,
+  GameClueStatsDto,
+  ClueStatDto,
+  SponsorInfoDto,
+  GameClueStatsSummaryDto,
+  SponsorGameHistoryDto,
+  SponsorGameParticipationDto
 } from './dto/game-sponsor.dto';
+import { Sponsor, SponsorDocument } from '../sponsor/schemas/sponsor.schema';
+import { User, UserDocument } from 'src/auth/schemas/user.schema';
 
 @Injectable()
 export class GameSponsorAssociationService {
@@ -32,7 +40,11 @@ export class GameSponsorAssociationService {
     private clueModel: Model<ClueDocument>,
     @InjectModel(Game.name)
     private gameModel: Model<GameDocument>,
-    private readonly gameService: GamesService
+    private readonly gameService: GamesService,
+    @InjectModel(Sponsor.name)  // ← AGREGAR ESTA LÍNEA
+    private sponsorModel: Model<SponsorDocument>,
+    @InjectModel(User.name)  // Necesitarás importar el schema User
+    private userModel: Model<UserDocument>,
   ) {}
 
   // =====================================================
@@ -87,7 +99,97 @@ export class GameSponsorAssociationService {
   // =====================================================
   // ACTUALIZACIÓN Y REASIGNACIÓN
   // =====================================================
+async updateGameSponsor(gameId: string, sponsorId: string, updateDto: UpdateGameSponsorDto): Promise<GameSponsorAssociationDocument> {
+  const association = await this.findSponsorInGame(gameId, sponsorId);
+  if (!association) {
+    throw new NotFoundException('Sponsor association not found');
+  }
 
+  // ========================================
+  // VALIDACIONES ADICIONALES
+  // ========================================
+
+  // 1. Validar que el juego esté en estado 'waiting' si se va a cambiar la pista
+  if (updateDto.clueId !== undefined) {
+    const game = await this.gameModel.findById(gameId).exec();
+    if (!game) {
+      throw new NotFoundException('Game not found');
+    }
+
+    if (game.status !== 'waiting') {
+      throw new BadRequestException('Cannot update clue association when game is not in waiting status');
+    }
+  }
+
+  // 2. Si se cambia la pista, validar que existe y realizar validaciones adicionales
+  if (updateDto.clueId !== undefined && updateDto.clueId !== null) {
+    await this.validateClueInGame(gameId, updateDto.clueId);
+
+    // 3. Validar que la nueva pista no esté ya asociada a otro sponsor en este juego
+    const existingClueAssociation = await this.gameSponsorModel.findOne({
+      gameId: gameId,
+      clueId: new Types.ObjectId(updateDto.clueId),
+      sponsorId: { $ne: sponsorId } // Excluir el sponsor actual
+    }).exec();
+
+    if (existingClueAssociation) {
+      throw new ConflictException('This clue is already associated with another sponsor in this game');
+    }
+
+    // 4. Validar que si se cambia de sponsor general a sponsor de pista,
+    // no haya conflictos con desbloqueos existentes
+    if (!association.clueId && updateDto.clueId) {
+      // Cambiando de general a específico - limpiar historial si existe
+      if (association.unlockedFor.length > 0) {
+        throw new BadRequestException('Cannot convert general sponsor with unlock history to clue-specific sponsor. Remove unlocks first or create a new sponsor association.');
+      }
+    }
+  }
+
+  // 5. Si se cambia de sponsor de pista a general, validar que es apropiado
+  if (association.clueId && updateDto.clueId === null) {
+    // Cambiar de específico a general - considerar si limpiar historial
+    if (association.unlockedFor.length > 0) {
+      console.warn(`Converting clue-specific sponsor ${sponsorId} to general sponsor. Clearing unlock history.`);
+      // Se limpiará más abajo en el código
+    }
+  }
+
+  // 6. Validar otros campos si es necesario
+  if (updateDto.isActive !== undefined && !updateDto.isActive) {
+    // Si se está desactivando, verificar si hay desbloqueos pendientes o restricciones
+    console.log(`Deactivating sponsor ${sponsorId} in game ${gameId}`);
+  }
+
+  // ========================================
+  // ACTUALIZACIÓN DE CAMPOS
+  // ========================================
+
+  // Actualizar campos básicos
+  Object.assign(association, updateDto);
+  
+  // Manejar cambio de clueId
+  if (updateDto.clueId !== undefined) {
+    association.clueId = updateDto.clueId ? new Types.ObjectId(updateDto.clueId) : null;
+    
+    // Si se cambia de sponsor de pista a general, limpiar historial de desbloqueos
+    if (association.clueId === null && association.unlockedFor.length > 0) {
+      association.unlockedFor = [];
+      association.totalUnlocks = 0;
+      console.log(`Cleared unlock history for sponsor ${sponsorId} when converting to general sponsor`);
+    }
+  }
+
+  try {
+    return await association.save();
+  } catch (error) {
+    if (error.code === 11000) {
+      throw new ConflictException('Duplicate sponsor association detected');
+    }
+    throw error;
+  }
+}
+/*
   async updateGameSponsor(gameId: string, sponsorId: string, updateDto: UpdateGameSponsorDto): Promise<GameSponsorAssociationDocument> {
     const association = await this.findSponsorInGame(gameId, sponsorId);
     if (!association) {
@@ -108,6 +210,7 @@ export class GameSponsorAssociationService {
 
     return await association.save();
   }
+*/
 
   async reassignSponsor(gameId: string, sponsorId: string, reassignDto: ReassignSponsorDto): Promise<GameSponsorAssociationDocument> {
     const association = await this.findSponsorInGame(gameId, sponsorId);
@@ -256,6 +359,132 @@ async getGameSponsors(gameId: string): Promise<GameSponsorAssociationDocument[]>
       .populate('clueId')
       .exec();
   }
+
+/**
+ * Obtener historial completo de participación de un sponsor por userId
+ */
+async getSponsorGameHistoryByUserId(userId: string): Promise<SponsorGameHistoryDto> {
+  // 1. Validar que userId sea ObjectId válido
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new BadRequestException('Invalid user ID format');
+  }
+
+  // 2. Buscar el usuario y verificar que tenga rol sponsor
+  const user = await this.userModel.findById(userId).exec();
+  if (!user) {
+    throw new NotFoundException('User not found');
+  }
+
+  if (user.role !== 'sponsor') {
+    throw new BadRequestException('User is not a sponsor');
+  }
+
+  if (!user.sponsorId) {
+    throw new NotFoundException('User does not have an associated sponsor');
+  }
+
+  // 3. Obtener información del sponsor
+  const sponsor = await this.sponsorModel.findById(user.sponsorId).exec();
+  if (!sponsor) {
+    throw new NotFoundException('Associated sponsor not found');
+  }
+
+  console.log(`🔍 Processing sponsor game history for userId: ${userId}, sponsorId: ${user.sponsorId}`);
+
+  // 4. Buscar todas las asociaciones usando el sponsorId del usuario
+  const associations = await this.gameSponsorModel
+    .find({ sponsorId: user.sponsorId.toString() }) // Como string según tu esquema
+    .populate('gameId')
+    .populate('clueId')
+    .sort({ createdAt: -1 })
+    .exec(); // Cambiar de .lean() a .exec() para mantener los timestamps
+
+  console.log(`📋 Found ${associations.length} game associations for sponsor`);
+
+  // 5. Procesar datos y crear respuesta
+  let totalSponsorshipAmount = 0;
+  let totalUnlocks = 0;
+  
+  const statisticsByType = {
+    main: { count: 0, totalAmount: 0 },
+    secondary: { count: 0, totalAmount: 0 },
+    media: { count: 0, totalAmount: 0 },
+    prize: { count: 0, totalAmount: 0 }
+  };
+
+  const gameParticipations: SponsorGameParticipationDto[] = [];
+
+  // Procesar cada asociación
+  for (const association of associations) {
+    const gameData = association.gameId as any; // Datos del juego poblado
+    const clueData = association.clueId as any; // Datos de la pista poblada (si existe)
+    const assocData = association as any; // Cast para acceder a campos de timestamp
+
+    // Acumular estadísticas
+    const amount = association.sponsorshipAmount || 0;
+    totalSponsorshipAmount += amount;
+    totalUnlocks += association.totalUnlocks || 0;
+
+    // Estadísticas por tipo
+    const type = association.sponsorshipType as keyof typeof statisticsByType;
+    if (statisticsByType[type]) {
+      statisticsByType[type].count++;
+      statisticsByType[type].totalAmount += amount;
+    }
+
+    // Crear objeto de participación
+    const participation: SponsorGameParticipationDto = {
+      gameId: gameData._id.toString(),
+      gameName: gameData.name,
+      gameCreatedAt: gameData.createdAt,
+      gameStatus: gameData.status,
+      
+      // Información de la pista (si existe)
+      clueId: clueData ? clueData._id.toString() : null,
+      clueTitle: clueData?.title,
+      clueType: clueData?.type,
+      clueOrder: clueData?.order,
+      isCollaborative: clueData?.isCollaborative,
+      
+      // Información del sponsorship
+      sponsorshipType: association.sponsorshipType,
+      sponsorshipAmount: association.sponsorshipAmount,
+      sponsorshipDescription: association.sponsorshipDescription,
+      
+      // Estadísticas de uso
+      totalUnlocks: association.totalUnlocks || 0,
+      isActive: association.isActive
+    };
+
+    gameParticipations.push(participation);
+  }
+
+  console.log(`📊 Processed ${gameParticipations.length} game participations`);
+
+  // 6. Construir respuesta final
+  const response: SponsorGameHistoryDto = {
+    userId: userId,
+    sponsorId: user.sponsorId.toString(),
+    sponsorInfo: {
+      nit: sponsor.nit,
+      nombreEmpresa: sponsor.nombreEmpresa,
+      representanteLegal: sponsor.representanteLegal,
+      logo: sponsor.logo
+    },
+    totalGames: associations.length,
+    totalSponsorshipAmount,
+    totalUnlocks,
+    gameParticipations: gameParticipations.sort((a, b) => 
+      new Date(b.gameCreatedAt).getTime() - new Date(a.gameCreatedAt).getTime()
+    ),
+    statisticsByType,
+    generatedAt: new Date()
+  };
+
+  console.log(`✅ Sponsor game history generated successfully for ${sponsor.nombreEmpresa}`);
+
+  return response;
+}
 
   async getClueSponsors(gameId: string, clueId: string): Promise<GameSponsorAssociationDocument[]> {
     return await this.gameSponsorModel
@@ -472,4 +701,170 @@ async getGameSponsors(gameId: string): Promise<GameSponsorAssociationDocument[]>
     // }
   }
     */
+
+  
+/**
+ * Obtener estadísticas completas de pistas y sponsors de un juego
+ */
+async getGameClueStats(gameId: string): Promise<GameClueStatsDto> {
+  console.log('🔍 Getting game clue stats for gameId:', gameId);
+
+  // Validar ObjectId format
+  if (!Types.ObjectId.isValid(gameId)) {
+    throw new BadRequestException('Invalid game ID format');
+  }
+
+  const gameObjectId = new Types.ObjectId(gameId);
+
+  // Verificar que el juego existe
+  const game = await this.gameModel.findById(gameObjectId).exec();
+  if (!game) {
+    throw new NotFoundException('Game not found');
+  }
+
+  console.log('✅ Game found:', game.name);
+
+  // 1. Buscar clues - En clues el gameId es ObjectId
+  console.log('🔍 Searching clues with gameId as ObjectId');
+  const clues = await this.clueModel
+    .find({ gameId: gameObjectId }) // ObjectId para clues
+    .sort({ order: 1 })
+    .lean();
+
+  console.log(`📋 Found ${clues.length} clues for game ${gameId}`);
+
+  // 2. Buscar asociaciones - En asociaciones el gameId es string
+  console.log('🔍 Searching sponsor associations with gameId as string');
+  const sponsorAssociations = await this.gameSponsorModel
+    .find({ 
+      gameId: gameId, // String para asociaciones
+      clueId: { $ne: null }
+    })
+    .populate('sponsorId')
+    .lean();
+
+  console.log(`💰 Found ${sponsorAssociations.length} sponsor associations`);
+
+  // 3. Crear mapa de clueId -> sponsor association
+  const sponsorByClueMap = new Map<string, any>();
+  sponsorAssociations.forEach(association => {
+    if (association.clueId) {
+      sponsorByClueMap.set(association.clueId.toString(), association);
+    }
+  });
+
+  console.log(`🔗 Created sponsor map with ${sponsorByClueMap.size} entries`);
+
+  // 4. Procesar cada pista y construir estadísticas
+  const clueStats: ClueStatDto[] = [];
+  let totalSponsorshipAmount = 0;
+  let normalClues = 0;
+  let collaborativeClues = 0;
+  let sponsoredClues = 0;
+  let totalUnlocks = 0;
+
+  const sponsorshipByType = {
+    main: { count: 0, totalAmount: 0 },
+    secondary: { count: 0, totalAmount: 0 },
+    media: { count: 0, totalAmount: 0 },
+    prize: { count: 0, totalAmount: 0 }
+  };
+
+  for (const clue of clues) {
+    const clueId = clue._id.toString();
+    const sponsorAssociation = sponsorByClueMap.get(clueId);
+    
+    console.log(`🔍 Processing clue ${clueId}, has sponsor: ${!!sponsorAssociation}`);
+
+    let sponsorInfo: SponsorInfoDto | undefined;
+    const hasSponsor = !!sponsorAssociation;
+
+    if (sponsorAssociation && sponsorAssociation.sponsorId) {
+      const sponsor = sponsorAssociation.sponsorId;
+      const amount = sponsorAssociation.sponsorshipAmount || 0;
+      
+      sponsorInfo = {
+        sponsorId: sponsor._id.toString(),
+        nit: sponsor.nit,
+        nombreEmpresa: sponsor.nombreEmpresa,
+        logo: sponsor.logo,
+        sponsorshipAmount: amount,
+        sponsorshipType: sponsorAssociation.sponsorshipType,
+        sponsorshipDescription: sponsorAssociation.sponsorshipDescription,
+        totalUnlocks: sponsorAssociation.totalUnlocks || 0,
+        isActive: sponsorAssociation.isActive
+      };
+
+      // Acumular estadísticas
+      totalSponsorshipAmount += amount;
+      sponsoredClues++;
+      totalUnlocks += sponsorAssociation.totalUnlocks || 0;
+      
+      // Estadísticas por tipo de sponsorship
+      const type = sponsorAssociation.sponsorshipType as keyof typeof sponsorshipByType;
+      if (sponsorshipByType[type]) {
+        sponsorshipByType[type].count++;
+        sponsorshipByType[type].totalAmount += amount;
+      }
+    }
+
+    // Contar tipos de pistas
+    if (clue.isCollaborative) {
+      collaborativeClues++;
+    } else {
+      normalClues++;
+    }
+
+    const clueStat: ClueStatDto = {
+      clueId: clueId,
+      idPista: clue.idPista,
+      title: clue.title,
+      description: clue.description,
+      order: clue.order,
+      type: clue.type,
+      isCollaborative: clue.isCollaborative || false,
+      requiredPlayers: clue.requiredPlayers,
+      collaborativeTimeLimit: clue.collaborativeTimeLimit,
+      status: clue.status,
+      pointsValue: clue.pointsValue,
+      sponsor: sponsorInfo,
+      hasSponsor
+    };
+
+    clueStats.push(clueStat);
+  }
+
+  console.log(`📊 Processed ${clueStats.length} clues, ${sponsoredClues} with sponsors`);
+
+  // 5. Construir resumen
+  const summary: GameClueStatsSummaryDto = {
+    totalClues: clues.length,
+    totalSponsorshipAmount,
+    normalClues,
+    collaborativeClues,
+    sponsoredClues,
+    unSponsoredClues: clues.length - sponsoredClues,
+    sponsorshipByType,
+    totalUnlocks
+  };
+
+  console.log('📊 Final summary:', summary);
+
+  // 6. Construir respuesta final
+  return {
+    gameId,
+    summary,
+    clues: clueStats.sort((a, b) => a.order - b.order),
+    generatedAt: new Date()
+  };
+}
+/**
+ * Obtener solo el resumen de estadísticas de un juego
+ */
+
+
+/**
+ * Obtener estadísticas detalladas de un sponsor específico en un juego
+ */
+
 }

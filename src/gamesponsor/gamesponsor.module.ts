@@ -7,6 +7,8 @@ import { Clue, ClueSchema } from 'src/clues/schemas/clue.schema';
 import { Game, GameSchema } from 'src/games/schemas/game.schema';
 import { GamesModule } from 'src/games/games.module';
 import { CluesModule } from 'src/clues/clues.module';
+import { Sponsor, SponsorSchema } from 'src/sponsor/schemas/sponsor.schema';
+import { User, UserSchema } from 'src/auth/schemas/user.schema';
 
 
 @Module({
@@ -14,7 +16,9 @@ import { CluesModule } from 'src/clues/clues.module';
    MongooseModule.forFeature([
       { name: GameSponsorAssociation.name, schema: GameSponsorAssociationSchema },
       { name: Clue.name, schema: ClueSchema },
-      { name: Game.name, schema: GameSchema }
+      { name: Game.name, schema: GameSchema },
+      { name: Sponsor.name, schema: SponsorSchema },
+      { name: User.name, schema: UserSchema }
     ]),
     // Importar módulos que contienen servicios necesarios
     GamesModule,

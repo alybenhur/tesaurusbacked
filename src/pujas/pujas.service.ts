@@ -37,6 +37,7 @@ import {
   ActiveBidsResponseDto,
   ActiveGameBidDto
 } from './dto/auction.dto';
+import { AuctionResultsResponseDto } from './dto/auction-results.dto';
 
 @Injectable()
 export class AuctionService {
@@ -1221,4 +1222,148 @@ private async validateBidUpdate(
 
   return { existingBid, minimumRequired };
 }
+async getAuctionResults(gameId: string): Promise<AuctionResultsResponseDto> {
+    // Validar que gameId sea un ObjectId válido
+    if (!Types.ObjectId.isValid(gameId)) {
+      throw new NotFoundException(`Invalid gameId format: ${gameId}`);
+    }
+
+    // Buscar la subasta por gameId
+    const auction = await this.auctionModel.findOne({ 
+      gameId: new Types.ObjectId(gameId) 
+    }).lean();
+
+    if (!auction) {
+      throw new NotFoundException(`Auction not found for game: ${gameId}`);
+    }
+
+    // Usar agregación para obtener toda la información necesaria
+    const pipeline = [
+      // Stage 1: Buscar la subasta
+      {
+        $match: { 
+          gameId: new Types.ObjectId(gameId) 
+        }
+      },
+      
+      // Stage 2: Descomponer el array de biddableClues
+      {
+        $unwind: {
+          path: '$biddableClues',
+          preserveNullAndEmptyArrays: false
+        }
+      },
+      
+      // Stage 3: Lookup para obtener información de las pistas
+      {
+        $lookup: {
+          from: 'clues',
+          localField: 'biddableClues.clueId',
+          foreignField: '_id',
+          as: 'clueInfo'
+        }
+      },
+      
+      // Stage 4: Descomponer el array de clueInfo
+      {
+        $unwind: '$clueInfo'
+      },
+      
+      // Stage 5: Lookup para obtener información del sponsor (solo si hay ganador)
+      {
+        $lookup: {
+          from: 'sponsors',
+          localField: 'biddableClues.currentBidderId',
+          foreignField: '_id',
+          as: 'sponsorInfo'
+        }
+      },
+      
+      // Stage 6: Proyectar la estructura final
+      {
+        $project: {
+          // Información de la subasta
+          auctionInfo: {
+            gameId: { $toString: '$gameId' },
+            status: '$status',
+            closingDate: '$closingDate',
+            startingAmount: '$startingAmount',
+            incrementValue: '$incrementValue'
+          },
+          
+          // Información de la pista
+          clue: {
+            id: { $toString: '$clueInfo._id' },
+            title: '$clueInfo.title',
+            description: '$clueInfo.description',
+            type: '$clueInfo.type'
+          },
+          
+          // Información de la puja
+          bidding: {
+            isWon: '$biddableClues.isWon',
+            currentBid: '$biddableClues.currentBid',
+            currentBidder: {
+              $cond: {
+                if: { 
+                  $and: [
+                    { $ne: ['$biddableClues.currentBidderId', null] },
+                    { $gt: [{ $size: '$sponsorInfo' }, 0] }
+                  ]
+                },
+                then: {
+                  sponsorId: { $toString: { $arrayElemAt: ['$sponsorInfo._id', 0] } },
+                  nombreEmpresa: { $arrayElemAt: ['$sponsorInfo.nombreEmpresa', 0] },
+                  representanteLegal: { $arrayElemAt: ['$sponsorInfo.representanteLegal', 0] },
+                  celular: { $arrayElemAt: ['$sponsorInfo.celular', 0] },
+                  correo: { $arrayElemAt: ['$sponsorInfo.correo', 0] },
+                  nit: { $arrayElemAt: ['$sponsorInfo.nit', 0] }
+                },
+                else: null
+              }
+            }
+          }
+        }
+      },
+      
+      // Stage 7: Agrupar para reconstruir la estructura
+      {
+        $group: {
+          _id: '$auctionInfo.gameId',
+          auctionInfo: { $first: '$auctionInfo' },
+          results: {
+            $push: {
+              clue: '$clue',
+              bidding: '$bidding'
+            }
+          }
+        }
+      }
+    ];
+
+    const aggregationResult = await this.auctionModel.aggregate(pipeline);
+
+    if (!aggregationResult.length) {
+      throw new NotFoundException(`No auction data found for game: ${gameId}`);
+    }
+
+    const result = aggregationResult[0];
+
+    // Calcular estadísticas adicionales
+    const totalClues = result.results.length;
+    const wonClues = result.results.filter(r => r.bidding.isWon).length;
+
+    // Construir la respuesta final
+    const response: AuctionResultsResponseDto = {
+      auction: {
+        ...result.auctionInfo,
+        totalClues,
+        wonClues
+      },
+      results: result.results
+    };
+
+    return response;
+  }
+
 }

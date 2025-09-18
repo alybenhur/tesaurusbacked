@@ -10,13 +10,18 @@ import { UpdateGameDto } from './dto/update-game.dto';
 import { PlayerProgress, PlayerProgressDocument } from './schemas/player-progress.schema';
 import { CollaborativeAttempt, CollaborativeAttemptDocument, CollaborativeAttemptStatus } from './schemas/collaborative-attempt.schema';
 import { AchievementType, PlayerAchievement, PlayerAchievementDocument } from './schemas/player-achievement.schema';
-
+import { Auction, AuctionDocument } from '../pujas/schemas/auction.schema';
+import { Bid, BidDocument } from '../pujas/schemas/bid.schema';
+import { Sponsor, SponsorDocument } from '../sponsor/schemas/sponsor.schema';
 
 @Injectable()
 export class GamesService {
   constructor(
     @InjectModel(Game.name) private gameModel: Model<GameDocument>,
     @InjectModel(Clue.name) private clueModel: Model<ClueDocument>,
+    @InjectModel(Auction.name) private auctionModel: Model<AuctionDocument>,
+    @InjectModel(Bid.name) private bidModel: Model<BidDocument>, // NUEVO
+     @InjectModel(Sponsor.name) private sponsorModel: Model<SponsorDocument>,
     @InjectModel(PlayerProgress.name) private playerProgressModel: Model<PlayerProgressDocument>,
     @InjectModel(CollaborativeAttempt.name) private collaborativeAttemptModel: Model<CollaborativeAttemptDocument>,
    @InjectModel(PlayerAchievement.name) private playerAchievementModel: Model<PlayerAchievementDocument>,
@@ -220,9 +225,83 @@ export class GamesService {
     };
   }
 
-  async findAll(): Promise<Game[]> {
+  /* async findAll(): Promise<Game[]> {
     return this.gameModel.find().populate('clues').exec();
-  }
+  }*/
+
+async findAll(): Promise<Game[]> {
+  // 1-3. Obtener juegos, subastas y bids (igual que antes)
+  const games = await this.gameModel.find().populate('clues').exec();
+  const gameIds = games.map(game => game._id);
+  const auctions = await this.auctionModel.find({ gameId: { $in: gameIds } }).exec();
+  const auctionIds = auctions.map(auction => auction._id);
+  const bids = await this.bidModel.find({ auctionId: { $in: auctionIds } }).exec();
+  
+  // 4. Obtener sponsors con los campos correctos
+  const sponsorIds = [...new Set(bids.map(bid => bid.sponsorId.toString()))];
+  const sponsors = await this.sponsorModel.find({ 
+    _id: { $in: sponsorIds } 
+  }).select('nombreEmpresa correo nit representanteLegal').exec(); // ← CAMPOS CORRECTOS
+  
+  // 5. Crear mapa de sponsors
+  const sponsorMap = new Map();
+  sponsors.forEach(sponsor => {
+    sponsorMap.set(sponsor._id.toString(), sponsor);
+  });
+  
+  // 6-7. Organizar datos (igual que antes)
+  const auctionMap = new Map();
+  const bidsByAuction = new Map();
+  
+  auctions.forEach(auction => {
+    auctionMap.set(auction.gameId.toString(), auction);
+  });
+  
+  bids.forEach(bid => {
+    const auctionId = bid.auctionId.toString();
+    if (!bidsByAuction.has(auctionId)) {
+      bidsByAuction.set(auctionId, []);
+    }
+    bidsByAuction.get(auctionId).push(bid);
+  });
+  
+  // 8. Enriquecer con campos correctos del sponsor
+  return games.map(game => {
+    const gameObj = game.toObject();
+    const auction = auctionMap.get(game._id.toString());
+    
+    let auctionInfo = null;
+    if (auction) {
+      const auctionBids = bidsByAuction.get(auction._id.toString()) || [];
+      
+      auctionInfo = {
+        ...auction.toObject(),
+        totalBids: auctionBids.length,
+        bids: auctionBids.map(bid => {
+          const sponsor = sponsorMap.get(bid.sponsorId.toString());
+          return {
+            _id: bid._id,
+            auctionId: bid.auctionId,
+            clueId: bid.clueId,
+            sponsorId: bid.sponsorId,
+            // ← USAR CAMPOS CORRECTOS DEL SPONSOR
+            sponsorName: sponsor?.nombreEmpresa || 'Sponsor no encontrado',
+            sponsorEmail: sponsor?.correo || null,
+            sponsorNit: sponsor?.nit || null,
+            sponsorRepresentante: sponsor?.representanteLegal || null,
+            amount: bid.amount,
+            timestamp: bid.timestamp
+          };
+        })
+      };
+    }
+    
+    return {
+      ...gameObj,
+      auction: auctionInfo
+    };
+  });
+}
 
   async findOne(id: string): Promise<Game> {
     const game = await this.gameModel.findById(id).populate('clues').exec();

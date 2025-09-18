@@ -325,3 +325,103 @@ export class CheckSponsorAvailabilityDto {
   @IsMongoId()
   clueId?: string;
 }
+
+export class SponsorInfoDto {
+  sponsorId: string;
+  nit: string;
+  nombreEmpresa: string;
+  logo: string;
+  sponsorshipAmount: number;
+  sponsorshipType: 'main' | 'secondary' | 'media' | 'prize';
+  sponsorshipDescription?: string;
+  totalUnlocks: number;
+  isActive: boolean;
+}
+
+export class ClueStatDto {
+  clueId: string;
+  idPista: string;
+  title: string;
+  description: string;
+  order: number;
+  type: string;
+  isCollaborative: boolean;
+  requiredPlayers?: number;
+  collaborativeTimeLimit?: number;
+  status: string;
+  pointsValue?: number;
+  sponsor?: SponsorInfoDto;
+  hasSponsor: boolean;
+}
+
+export class GameClueStatsSummaryDto {
+  totalClues: number;
+  totalSponsorshipAmount: number;
+  normalClues: number;
+  collaborativeClues: number;
+  sponsoredClues: number;
+  unSponsoredClues: number;
+  sponsorshipByType: {
+    main: { count: number; totalAmount: number };
+    secondary: { count: number; totalAmount: number };
+    media: { count: number; totalAmount: number };
+    prize: { count: number; totalAmount: number };
+  };
+  totalUnlocks: number;
+}
+
+export class GameClueStatsDto {
+  gameId: string;
+  summary: GameClueStatsSummaryDto;
+  clues: ClueStatDto[];
+  generatedAt: Date;
+}
+
+// =====================================================
+// SPONSOR GAME HISTORY DTOs (AGREGAR AL FINAL DE game-sponsor.dto.ts)
+// =====================================================
+
+export class SponsorGameParticipationDto {
+  gameId: string;
+  gameName: string;
+  gameCreatedAt: Date;
+  gameStatus: string; // 'waiting' | 'active' | 'completed' | 'cancelled'
+  
+  // Información de la pista asociada (si aplica)
+  clueId?: string | null;
+  clueTitle?: string;
+  clueType?: string;
+  clueOrder?: number;
+  isCollaborative?: boolean;
+  
+  // Información del sponsorship
+  sponsorshipType: string;
+  sponsorshipAmount?: number;
+  sponsorshipDescription?: string;
+  
+  // Estadísticas de uso
+  totalUnlocks: number;
+  isActive: boolean;
+}
+
+export class SponsorGameHistoryDto {
+  userId: string;
+  sponsorId: string;
+  sponsorInfo: {
+    nit: string;
+    nombreEmpresa: string;
+    representanteLegal: string;
+    logo: string;
+  };
+  totalGames: number;
+  totalSponsorshipAmount: number;
+  totalUnlocks: number;
+  gameParticipations: SponsorGameParticipationDto[];
+  statisticsByType: {
+    main: { count: number; totalAmount: number };
+    secondary: { count: number; totalAmount: number };
+    media: { count: number; totalAmount: number };
+    prize: { count: number; totalAmount: number };
+  };
+  generatedAt: Date;
+}

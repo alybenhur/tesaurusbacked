@@ -7,6 +7,9 @@ import { Clue, ClueSchema } from '../clues/schemas/clue.schema';
 import { PlayerProgress, PlayerProgressSchema } from './schemas/player-progress.schema';
 import { CollaborativeAttempt, CollaborativeAttemptSchema } from './schemas/collaborative-attempt.schema';
 import { PlayerAchievement, PlayerAchievementSchema } from './schemas/player-achievement.schema';
+import { Auction, AuctionSchema } from 'src/pujas/schemas/auction.schema';
+import { Bid, BidSchema } from 'src/pujas/schemas/bid.schema';
+import { Sponsor, SponsorSchema } from 'src/sponsor/schemas/sponsor.schema';
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -14,7 +17,11 @@ import { PlayerAchievement, PlayerAchievementSchema } from './schemas/player-ach
       { name: Clue.name, schema: ClueSchema },
       { name: PlayerProgress.name, schema: PlayerProgressSchema },
       { name: CollaborativeAttempt.name, schema: CollaborativeAttemptSchema },
-      { name: PlayerAchievement.name, schema: PlayerAchievementSchema } // ✅ NUEVO
+      { name: PlayerAchievement.name, schema: PlayerAchievementSchema },
+      { name: Auction.name, schema: AuctionSchema },
+      { name: Bid.name, schema: BidSchema },
+      { name: Sponsor.name, schema: SponsorSchema },
+       // ✅ NUEVO
     ]),
   ],
   controllers: [GamesController],

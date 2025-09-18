@@ -27,7 +27,9 @@ import {
   BulkUnlockClueDto,
   GameSponsorQueryDto,
   ValidateSponsorUnlockDto,
-  CheckSponsorAvailabilityDto
+  CheckSponsorAvailabilityDto,
+  GameClueStatsDto,
+  SponsorGameHistoryDto
 } from './dto/game-sponsor.dto';
 
 @Controller('gamessponsors')
@@ -259,4 +261,18 @@ export class GameSponsorController {
   ) {
     return await this.gameSponsorService.updateGameSponsor(gameId, sponsorId, { isActive: true });
   }
+
+  /**
+ * Obtener estadísticas completas de pistas y sponsors de un juego
+ */
+@Get('games/:gameId/clue-stats')
+async getGameClueStats(@Param('gameId') gameId: string): Promise<GameClueStatsDto> {
+  return this.gameSponsorService.getGameClueStats(gameId);
+}
+
+@Get('users/:userId/sponsor-game-history')
+async getSponsorGameHistoryByUserId(@Param('userId') userId: string): Promise<SponsorGameHistoryDto>{
+  return this.gameSponsorService.getSponsorGameHistoryByUserId(userId)
+}
+
 }

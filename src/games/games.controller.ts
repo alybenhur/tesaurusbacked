@@ -58,8 +58,8 @@ export class GamesController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard,RolesGuard)
-  @Roles(UserRole.ADMIN)
+  //@UseGuards(JwtAuthGuard,RolesGuard)
+  //@Roles(UserRole.ADMIN)
   async findAll(
     @Query('status') status?: string,
     @Query('admin') adminId?: string,
