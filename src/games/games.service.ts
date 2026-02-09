@@ -2041,6 +2041,22 @@ private validateProximity(
     );
   }
 
+   // ✅ LOGS DETALLADOS DE COORDENADAS
+  console.log('📊 INFORMACIÓN DE UBICACIONES:');
+  console.log('');
+  console.log('👤 JUGADOR:');
+  console.log('   Latitud:  ', playerLatitude);
+  console.log('   Longitud: ', playerLongitude);
+  console.log('   📍 Google Maps: https://www.google.com/maps?q=' + playerLatitude + ',' + playerLongitude);
+  console.log('');
+  console.log('🎯 PISTA (' + clue.title + '):');
+  console.log('   ID:       ', clue._id);
+  console.log('   Latitud:  ', clue.location.latitude);
+  console.log('   Longitud: ', clue.location.longitude);
+  console.log('   Rango:    ', clue.range + 'm');
+  console.log('   📍 Google Maps: https://www.google.com/maps?q=' + clue.location.latitude + ',' + clue.location.longitude);
+  console.log('');
+
   // Calcular distancia entre jugador y pista
   const distance = this.calculateDistance(
     playerLatitude,
