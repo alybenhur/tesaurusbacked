@@ -10,6 +10,8 @@ import { PlayerAchievement, PlayerAchievementSchema } from './schemas/player-ach
 import { Auction, AuctionSchema } from 'src/pujas/schemas/auction.schema';
 import { Bid, BidSchema } from 'src/pujas/schemas/bid.schema';
 import { Sponsor, SponsorSchema } from 'src/sponsor/schemas/sponsor.schema';
+import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -21,11 +23,12 @@ import { Sponsor, SponsorSchema } from 'src/sponsor/schemas/sponsor.schema';
       { name: Auction.name, schema: AuctionSchema },
       { name: Bid.name, schema: BidSchema },
       { name: Sponsor.name, schema: SponsorSchema },
-       // ✅ NUEVO
+      // ✅ NUEVO
     ]),
+    CloudinaryModule,
   ],
   controllers: [GamesController],
   providers: [GamesService],
   exports: [GamesService], // Para usar en otros módulos si es necesario
 })
-export class GamesModule {}
+export class GamesModule { }

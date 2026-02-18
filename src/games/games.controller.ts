@@ -13,7 +13,11 @@ import {
   BadRequestException,
   NotFoundException,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FileInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
 import { GamesService } from './games.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
@@ -33,16 +37,34 @@ export class JoinGameDto {
 
 @Controller('api/games')
 export class GamesController {
-  constructor(private readonly gamesService: GamesService) {}
+  constructor(private readonly gamesService: GamesService) { }
 
   @Post()
-  @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   //@Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body(ValidationPipe) createGameDto: CreateGameDto) {
-    console.log(createGameDto)
+  @UseInterceptors(AnyFilesInterceptor())
+  async create(
+    @Body() body: any,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    // Si los datos vienen como string JSON en el campo 'data' (común en multipart)
+    let createGameDto: CreateGameDto;
+    if (body.data && typeof body.data === 'string') {
+      try {
+        createGameDto = JSON.parse(body.data);
+      } catch (e) {
+        throw new BadRequestException('Formato de datos JSON inválido en el campo data');
+      }
+    } else {
+      createGameDto = body;
+    }
+
+    console.log('Creando juego con datos:', createGameDto);
+    console.log('Archivos recibidos:', files?.length || 0);
+
     try {
-      const game = await this.gamesService.create(createGameDto);
+      const game = await this.gamesService.create(createGameDto, files);
       return {
         success: true,
         message: 'Juego creado exitosamente',
@@ -66,7 +88,7 @@ export class GamesController {
   ) {
     try {
       const games = await this.gamesService.findAll();
-      
+
       // Filtrar por adminId si se proporciona
       let filteredGames = games;
       if (adminId) {
@@ -98,35 +120,35 @@ export class GamesController {
   }
 
   @Get('active')
-  @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
-     async findActiveGames() {
-       try {
-         const games = await this.gamesService.findActiveGames();
-         return {
-           success: true,
-           message: 'Juegos activos obtenidos exitosamente',
-           data: games,
-           count: games.length,
-         };
-       } catch (error) {
-         throw new BadRequestException({
-           success: false,
-           message: 'Error al obtener juegos activos',
-           error: error.message,
-         });
-       }
-     }
+  async findActiveGames() {
+    try {
+      const games = await this.gamesService.findActiveGames();
+      return {
+        success: true,
+        message: 'Juegos activos obtenidos exitosamente',
+        data: games,
+        count: games.length,
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al obtener juegos activos',
+        error: error.message,
+      });
+    }
+  }
 
   @Get('available')
- // @UseGuards(JwtAuthGuard,RolesGuard)
+  // @UseGuards(JwtAuthGuard,RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async findAvailable() {
     try {
       const games = await this.gamesService.findAll();
       // Filtrar juegos disponibles (en estado waiting y con espacio)
-      const availableGames = games.filter(game => 
-        game.status === GameStatus.WAITING && 
+      const availableGames = games.filter(game =>
+        game.status === GameStatus.WAITING &&
         game.playerIds.length < game.maxPlayers
       );
 
@@ -146,7 +168,7 @@ export class GamesController {
   }
 
   @Get(':id')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async findOne(@Param('id') id: string) {
     try {
@@ -169,12 +191,12 @@ export class GamesController {
   }
 
   @Get(':id/stats')
-  @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getGameStats(@Param('id') id: string) {
     try {
       const game = await this.gamesService.findOne(id);
-      
+
       // Calcular estadísticas básicas
       const stats = {
         gameId: id,
@@ -182,12 +204,12 @@ export class GamesController {
         maxPlayers: game.maxPlayers,
         totalClues: game.metadata.totalClues,
         completedClues: game.metadata.completedClues,
-        progress: game.metadata.totalClues > 0 
-          ? (game.metadata.completedClues / game.metadata.totalClues) * 100 
+        progress: game.metadata.totalClues > 0
+          ? (game.metadata.completedClues / game.metadata.totalClues) * 100
           : 0,
         status: game.status,
-        duration: game.startedAt 
-          ? Date.now() - game.startedAt.getTime() 
+        duration: game.startedAt
+          ? Date.now() - game.startedAt.getTime()
           : 0,
         lastActivity: game.metadata.lastActivity,
       };
@@ -210,7 +232,7 @@ export class GamesController {
   }
 
   @Patch(':id')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async update(
     @Param('id') id: string,
@@ -236,8 +258,8 @@ export class GamesController {
   }
 
   @Post(':id/start')
-   @UseGuards(JwtAuthGuard,RolesGuard)
-  @Roles(UserRole.ADMIN,UserRole.PLAYER)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   @HttpCode(HttpStatus.OK)
   async startGame(@Param('id') id: string) {
     console.log(id)
@@ -260,35 +282,35 @@ export class GamesController {
     }
   }
 
-@Post(':id/join')
-@UseGuards(JwtAuthGuard,RolesGuard)
-@Roles(UserRole.PLAYER)
-@HttpCode(HttpStatus.OK)
-async joinGame(
-  @Param('id') id: string,
-  @Body(ValidationPipe) joinGameDto: JoinGameDto,
-) {
-  try {
-    const { game, firstClue } = await this.gamesService.joinGame(id, joinGameDto.playerId);
-    return {
-      success: true,
-      message: 'Te has unido al juego exitosamente',
-      data: {
-        game,
-        firstClue,
-      },
-    };
-  } catch (error) {
-    if (error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
+  @Post(':id/join')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PLAYER)
+  @HttpCode(HttpStatus.OK)
+  async joinGame(
+    @Param('id') id: string,
+    @Body(ValidationPipe) joinGameDto: JoinGameDto,
+  ) {
+    try {
+      const { game, firstClue } = await this.gamesService.joinGame(id, joinGameDto.playerId);
+      return {
+        success: true,
+        message: 'Te has unido al juego exitosamente',
+        data: {
+          game,
+          firstClue,
+        },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al unirse al juego',
+        error: error.message,
+      });
     }
-    throw new BadRequestException({
-      success: false,
-      message: 'Error al unirse al juego',
-      error: error.message,
-    });
   }
-}
 
   /*
   @Post(':id/join')
@@ -318,7 +340,7 @@ async joinGame(
 */
 
   @Post(':id/leave')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PLAYER)
   @HttpCode(HttpStatus.OK)
   async leaveGame(
@@ -349,7 +371,7 @@ async joinGame(
   }
 
   @Delete(':id')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async remove(@Param('id') id: string) {
@@ -372,12 +394,12 @@ async joinGame(
   }
 
   @Get(':id/players')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getGamePlayers(@Param('id') id: string) {
     try {
       const game = await this.gamesService.findOne(id);
-      
+
       const playersInfo = game.playerIds.map(playerId => ({
         id: playerId,
         name: playerId, // Por ahora usamos el ID como nombre, puedes mejorarlo
@@ -410,13 +432,13 @@ async joinGame(
 
   // ✅ NUEVO: Endpoint para obtener las pistas de un juego
   @Get(':id/clues')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async getGameClues(@Param('id') id: string) {
     try {
       console.log(id)
       const game = await this.gamesService.findOne(id);
-      
+
       return {
         success: true,
         message: 'Pistas del juego obtenidas exitosamente',
@@ -441,13 +463,13 @@ async joinGame(
 
   // ✅ NUEVO: Endpoint para finalizar un juego
   @Post(':id/finish')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async finishGame(@Param('id') id: string) {
     try {
       const game = await this.gamesService.findOne(id);
-      
+
       if (game.status !== GameStatus.ACTIVE) {
         throw new BadRequestException('Solo se pueden finalizar juegos activos');
       }
@@ -477,13 +499,13 @@ async joinGame(
 
   // ✅ NUEVO: Endpoint para cancelar un juego
   @Post(':id/cancel')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async cancelGame(@Param('id') id: string) {
     try {
       const game = await this.gamesService.findOne(id);
-      
+
       if (game.status === GameStatus.COMPLETED) {
         throw new BadRequestException('No se puede cancelar un juego completado');
       }
@@ -510,45 +532,45 @@ async joinGame(
     }
   }
 
-   
 
- // DELETE /api/games/:id/clues/:clueId: Elimina una pista específica de un juego
+
+  // DELETE /api/games/:id/clues/:clueId: Elimina una pista específica de un juego
   @Delete(':id/clues/:clueId')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-@HttpCode(HttpStatus.OK)
-async removeClueFromGame(
-  @Param('id') gameId: string,
-  @Param('clueId') clueId: string,
-) {
-  try {
-    const result = await this.gamesService.removeClueFromGame(gameId, clueId);
-    return {
-      success: true,
-      message: 'Pista eliminada del juego exitosamente',
-      data: result,
-    };
-  } catch (error) {
-    if (error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
+  @HttpCode(HttpStatus.OK)
+  async removeClueFromGame(
+    @Param('id') gameId: string,
+    @Param('clueId') clueId: string,
+  ) {
+    try {
+      const result = await this.gamesService.removeClueFromGame(gameId, clueId);
+      return {
+        success: true,
+        message: 'Pista eliminada del juego exitosamente',
+        data: result,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al eliminar la pista del juego',
+        error: error.message,
+      });
     }
-    throw new BadRequestException({
-      success: false,
-      message: 'Error al eliminar la pista del juego',
-      error: error.message,
-    });
   }
-}
 
-@Get('player/:playerId')
- @UseGuards(JwtAuthGuard,RolesGuard)
+  @Get('player/:playerId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getPlayerGames(@Param('playerId') playerId: string) {
     try {
       console.log("llego aqui")
       const games = await this.gamesService.getPlayerGames(playerId);
-      return  games
-           
+      return games
+
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -562,142 +584,142 @@ async removeClueFromGame(
   }
 
   @Post('clues/discover')
-   @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PLAYER)
-@HttpCode(HttpStatus.OK)
-async discoverClue(
-  @Body(ValidationPipe) discoverClueDto: DiscoverClueDto,
-) {
-  
-  try {
-    console.log('descubriendo pista')
-    const result = await this.gamesService.discoverClue(
-      discoverClueDto.clueId, 
-      discoverClueDto.playerId,
-      discoverClueDto.latitude,
-      discoverClueDto.longitude
-    );
-    return {
-      success: true,
-      message: 'Pista descubierta exitosamente',
-      data: result,
-    };
-  } catch (error) {
-    if (error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new BadRequestException({
-      success: false,
-      message: 'Error al descubrir la pista',
-      error: error.message,
-    });
-  }
-}
+  @HttpCode(HttpStatus.OK)
+  async discoverClue(
+    @Body(ValidationPipe) discoverClueDto: DiscoverClueDto,
+  ) {
 
-@Get(':gameId/clues/:clueId/collaborative-status')
- @UseGuards(JwtAuthGuard,RolesGuard)
- @Roles(UserRole.PLAYER)
-async getCollaborativeStatus(
-  @Param('gameId') gameId: string,
-  @Param('clueId') clueId: string,
-) {
-  try {
-    const status = await this.gamesService.getCollaborativeStatus(clueId, gameId);
-    return {
-      success: true,
-      message: 'Estado de pista colaborativa obtenido exitosamente',
-      data: status,
-    };
-  } catch (error) {
-    if (error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
+    try {
+      console.log('descubriendo pista')
+      const result = await this.gamesService.discoverClue(
+        discoverClueDto.clueId,
+        discoverClueDto.playerId,
+        discoverClueDto.latitude,
+        discoverClueDto.longitude
+      );
+      return {
+        success: true,
+        message: 'Pista descubierta exitosamente',
+        data: result,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al descubrir la pista',
+        error: error.message,
+      });
     }
-    throw new BadRequestException({
-      success: false,
-      message: 'Error al obtener estado de pista colaborativa',
-      error: error.message,
-    });
   }
-}
 
-/**
- * Obtiene la cantidad de juegos ganados y detalles de victorias de un jugador
- * GET /api/games/player/:playerId/wins
- */
-@Get('player/:playerId/wins')
- @UseGuards(JwtAuthGuard,RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.PLAYER)
-async getPlayerWins(@Param('playerId') playerId: string) {
-  try {
-    const wins = await this.gamesService.getPlayerWins(playerId);
-    return wins;
-  } catch (error) {
-    if (error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
+  @Get(':gameId/clues/:clueId/collaborative-status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PLAYER)
+  async getCollaborativeStatus(
+    @Param('gameId') gameId: string,
+    @Param('clueId') clueId: string,
+  ) {
+    try {
+      const status = await this.gamesService.getCollaborativeStatus(clueId, gameId);
+      return {
+        success: true,
+        message: 'Estado de pista colaborativa obtenido exitosamente',
+        data: status,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al obtener estado de pista colaborativa',
+        error: error.message,
+      });
     }
-    throw new BadRequestException({
-      success: false,
-      message: 'Error al obtener victorias del jugador',
-      error: error.message,
-    });
   }
-}
 
-@Get(':id/collaborative-clues')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
-async getGameCollaborativeClues(@Param('id') id: string) {
-  try {
-    const result = await this.gamesService.findCollaborativeClues(id);
-    return {
-      success: true,
-      message: 'Pistas colaborativas obtenidas exitosamente',
-      data: result,
-    };
-  } catch (error) {
-    if (error instanceof NotFoundException) {
-      throw error;
-    }
-    throw new BadRequestException({
-      success: false,
-      message: 'Error al obtener las pistas colaborativas del juego',
-      error: error.message,
-    });
-  }
-}
-
-/**
- * GET /api/games/player/:playerId/achievements/stats
- * Obtiene estadísticas generales de achievements de un jugador
- */
-@Get('player/:playerId/achievements/stats')
-@UseGuards(JwtAuthGuard,RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.PLAYER)
-async getPlayerAchievementStats(@Param('playerId') playerId: string) {
-  try {
-    const stats = await this.gamesService.getPlayerAchievementStats(playerId);
-    return {
-      success: true,
-      message: 'Estadísticas de achievements obtenidas exitosamente',
-      data: stats.data,
-    };
-  } catch (error) {
-    if (error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new BadRequestException({
-      success: false,
-      message: 'Error al obtener estadísticas de achievements',
-      error: error.message,
-    });
-  }
-}
-
-/**
-   * PATCH /api/games/:gameId/clues/:clueId
-   * Actualiza una pista específica de un juego
-   * Solo permitido cuando el juego está en estado WAITING
+  /**
+   * Obtiene la cantidad de juegos ganados y detalles de victorias de un jugador
+   * GET /api/games/player/:playerId/wins
    */
+  @Get('player/:playerId/wins')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
+  async getPlayerWins(@Param('playerId') playerId: string) {
+    try {
+      const wins = await this.gamesService.getPlayerWins(playerId);
+      return wins;
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al obtener victorias del jugador',
+        error: error.message,
+      });
+    }
+  }
+
+  @Get(':id/collaborative-clues')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async getGameCollaborativeClues(@Param('id') id: string) {
+    try {
+      const result = await this.gamesService.findCollaborativeClues(id);
+      return {
+        success: true,
+        message: 'Pistas colaborativas obtenidas exitosamente',
+        data: result,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al obtener las pistas colaborativas del juego',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/games/player/:playerId/achievements/stats
+   * Obtiene estadísticas generales de achievements de un jugador
+   */
+  @Get('player/:playerId/achievements/stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
+  async getPlayerAchievementStats(@Param('playerId') playerId: string) {
+    try {
+      const stats = await this.gamesService.getPlayerAchievementStats(playerId);
+      return {
+        success: true,
+        message: 'Estadísticas de achievements obtenidas exitosamente',
+        data: stats.data,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al obtener estadísticas de achievements',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+     * PATCH /api/games/:gameId/clues/:clueId
+     * Actualiza una pista específica de un juego
+     * Solo permitido cuando el juego está en estado WAITING
+     */
   @Patch(':gameId/clues/:clueId')
   //@UseGuards(JwtAuthGuard, RolesGuard)
   //@Roles(UserRole.ADMIN)
@@ -709,7 +731,7 @@ async getPlayerAchievementStats(@Param('playerId') playerId: string) {
   ) {
     try {
       const updatedClue = await this.gamesService.updateClue(gameId, clueId, updateClueDto);
-      
+
       return {
         success: true,
         message: 'Pista actualizada exitosamente',
