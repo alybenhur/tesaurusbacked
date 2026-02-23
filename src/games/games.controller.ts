@@ -41,7 +41,7 @@ export class GamesController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  //@Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(AnyFilesInterceptor())
   async create(
@@ -80,8 +80,8 @@ export class GamesController {
   }
 
   @Get()
-  //@UseGuards(JwtAuthGuard,RolesGuard)
-  //@Roles(UserRole.ADMIN)
+  @UseGuards(JwtAuthGuard,RolesGuard)
+  @Roles(UserRole.ADMIN)
   async findAll(
     @Query('status') status?: string,
     @Query('admin') adminId?: string,
@@ -141,7 +141,7 @@ export class GamesController {
   }
 
   @Get('available')
-  // @UseGuards(JwtAuthGuard,RolesGuard)
+  @UseGuards(JwtAuthGuard,RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async findAvailable() {
     try {
@@ -563,8 +563,8 @@ export class GamesController {
   }
 
   @Get('player/:playerId')
-  //@UseGuards(JwtAuthGuard, RolesGuard)
- // @Roles(UserRole.ADMIN, UserRole.PLAYER)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getPlayerGames(@Param('playerId') playerId: string) {
     try {
       console.log("llego aqui")
@@ -721,8 +721,8 @@ export class GamesController {
      * Solo permitido cuando el juego está en estado WAITING
      */
   @Patch(':gameId/clues/:clueId')
-  //@UseGuards(JwtAuthGuard, RolesGuard)
-  //@Roles(UserRole.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async updateClue(
     @Param('gameId') gameId: string,
