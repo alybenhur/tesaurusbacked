@@ -563,8 +563,8 @@ export class GamesController {
   }
 
   @Get('player/:playerId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.PLAYER)
+  //@UseGuards(JwtAuthGuard, RolesGuard)
+ // @Roles(UserRole.ADMIN, UserRole.PLAYER)
   async getPlayerGames(@Param('playerId') playerId: string) {
     try {
       console.log("llego aqui")

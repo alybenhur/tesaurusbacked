@@ -525,7 +525,7 @@ export class GamesService {
         .populate({
           path: 'clues.clueId',
           model: 'Clue',
-          select: 'title description order status discoveredAt discoveredBy gameId idPista type', // Incluimos todos los campos requeridos por Clue
+          select: 'title description order status discoveredAt discoveredBy gameId idPista type imageUrl', // Incluimos todos los campos requeridos por Clue
         })
         .exec();
 
@@ -545,6 +545,7 @@ export class GamesService {
             gameId: (clue.clueId as any).gameId, // Incluir gameId
             idPista: (clue.clueId as any).idPista || `UNKNOWN_${clue.clueId._id}`, // Incluir idPista
             type: (clue.clueId as any).type || 'text', // Incluir tipo por defecto
+            imageUrl: (clue.clueId as any).imageUrl || null, 
           }));
 
         return {
