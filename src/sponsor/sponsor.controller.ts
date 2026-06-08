@@ -11,11 +11,23 @@ import {
   HttpStatus,
   UsePipes,
   ValidationPipe,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { SponsorService } from './sponsor.service';
 import { CreateSponsorDto } from './dto/create-sponsor.dto';
 import { UpdateSponsorDto } from './dto/update-sponsor.dto';
 import { SponsorResponseDto, SponsorListResponseDto } from './dto/response-sponsor.dto';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { UserRole } from 'src/auth/schemas/user.schema';
+
+const ALLOWED_LOGO_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
 
 @Controller('sponsors')
 @UsePipes(new ValidationPipe({ 
@@ -24,7 +36,43 @@ import { SponsorResponseDto, SponsorListResponseDto } from './dto/response-spons
   forbidNonWhitelisted: true
 }))
 export class SponsorController {
-  constructor(private readonly sponsorService: SponsorService) {}
+  constructor(
+    private readonly sponsorService: SponsorService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
+
+  @Post('upload-logo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FileInterceptor('logo'))
+  async uploadLogo(
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ message: string; logoUrl: string; url: string }> {
+    if (!file) {
+      throw new BadRequestException('No se recibió ningún archivo de imagen');
+    }
+
+    if (!ALLOWED_LOGO_MIME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido (${file.mimetype}). Tipos permitidos: JPG, JPEG, PNG, WEBP, GIF`,
+      );
+    }
+
+    try {
+      const uploadResult = await this.cloudinaryService.uploadFile(file);
+      return {
+        message: 'Logo subido exitosamente',
+        logoUrl: uploadResult.secure_url,
+        url: uploadResult.secure_url,
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        message: 'Error al subir el logo',
+        error: error.message,
+      });
+    }
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
