@@ -270,6 +270,34 @@ async createAuction(createAuctionDto: CreateAuctionDto): Promise<AuctionResponse
   }
 
   // ============================================================================
+  // PASO 3.5: EXCLUIR LA PRIMERA PISTA DEL JUEGO (nunca entra en subasta)
+  // La "primera pista" es la de menor 'order'.
+  // ============================================================================
+  const firstClue = await this.clueModel
+    .findOne({
+      gameId: Types.ObjectId.isValid(gameId) ? new Types.ObjectId(gameId) : gameId
+    })
+    .sort({ order: 1 })
+    .exec();
+
+  if (firstClue) {
+    const firstClueId = firstClue._id.toString();
+    const beforeCount = selectedClues.length;
+    selectedClues = selectedClues.filter(c => c._id.toString() !== firstClueId);
+
+    if (selectedClues.length !== beforeCount) {
+      console.log(`🚫 Pista inicial "${firstClue.title}" (order ${firstClue.order}) excluida de la subasta: la primera pista nunca se subasta`);
+    }
+  }
+
+  // Revalidar que aún queden pistas para subastar tras excluir la primera
+  if (selectedClues.length === 0) {
+    throw new BadRequestException(
+      'No hay pistas válidas para subastar. La primera pista del juego no puede subastarse.'
+    );
+  }
+
+  // ============================================================================
   // PASO 4: CREAR BIDDABLE CLUES CON MONTOS DIFERENCIADOS
   // ============================================================================
   

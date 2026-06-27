@@ -10,9 +10,10 @@ import { UpdateGameDto } from './dto/update-game.dto';
 import { PlayerProgress, PlayerProgressDocument } from './schemas/player-progress.schema';
 import { CollaborativeAttempt, CollaborativeAttemptDocument, CollaborativeAttemptStatus } from './schemas/collaborative-attempt.schema';
 import { AchievementType, PlayerAchievement, PlayerAchievementDocument } from './schemas/player-achievement.schema';
-import { Auction, AuctionDocument } from '../pujas/schemas/auction.schema';
+import { Auction, AuctionDocument, AuctionStatus } from '../pujas/schemas/auction.schema';
 import { Bid, BidDocument } from '../pujas/schemas/bid.schema';
 import { Sponsor, SponsorDocument } from '../sponsor/schemas/sponsor.schema';
+import { GameSponsorAssociation, GameSponsorAssociationDocument } from '../gamesponsor/schemas/gamesponsor.schema';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class GamesService {
     @InjectModel(Auction.name) private auctionModel: Model<AuctionDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>, // NUEVO
     @InjectModel(Sponsor.name) private sponsorModel: Model<SponsorDocument>,
+    @InjectModel(GameSponsorAssociation.name) private gameSponsorModel: Model<GameSponsorAssociationDocument>,
     @InjectModel(PlayerProgress.name) private playerProgressModel: Model<PlayerProgressDocument>,
     @InjectModel(CollaborativeAttempt.name) private collaborativeAttemptModel: Model<CollaborativeAttemptDocument>,
     @InjectModel(PlayerAchievement.name) private playerAchievementModel: Model<PlayerAchievementDocument>,
@@ -498,6 +500,61 @@ export class GamesService {
     if (game.status !== 'waiting') {
       throw new BadRequestException('Game cannot be started');
     }
+
+    // ✅ REGLA: el juego debe tener una subasta antes de poder iniciarse
+    const auction = await this.auctionModel
+      .findOne({ gameId: new Types.ObjectId(gameId) })
+      .exec();
+
+    if (!auction) {
+      throw new BadRequestException(
+        'No se puede iniciar el juego: primero debe crear una subasta para este juego.',
+      );
+    }
+
+    // ✅ REGLA: la subasta debe haber cerrado (fecha de cierre ya pasó)
+    const now = new Date();
+    if (auction.closingDate > now) {
+      throw new BadRequestException(
+        `No se puede iniciar el juego: la subasta aún no ha cerrado. ` +
+        `Cierra el ${auction.closingDate.toLocaleString('es-CO', { timeZone: 'America/Bogota' })}.`,
+      );
+    }
+
+    // ✅ REGLA: asignar el sponsor ganador a cada pista que recibió pujas.
+    // Las pistas sin pujas no bloquean el inicio; simplemente quedan sin sponsor.
+    for (const biddableClue of auction.biddableClues) {
+      if (!biddableClue.currentBidderId) continue;
+
+      biddableClue.isWon = true;
+
+      const existingAssociation = await this.gameSponsorModel
+        .findOne({
+          gameId: new Types.ObjectId(gameId),
+          sponsorId: biddableClue.currentBidderId,
+          clueId: biddableClue.clueId,
+        })
+        .exec();
+
+      if (!existingAssociation) {
+        await this.gameSponsorModel.create({
+          gameId: new Types.ObjectId(gameId),
+          sponsorId: biddableClue.currentBidderId,
+          clueId: biddableClue.clueId,
+          sponsorshipType: 'secondary',
+          sponsorshipAmount: biddableClue.currentBid,
+          totalUnlocks: 0,
+          unlockedFor: [],
+          isActive: true,
+        });
+      }
+    }
+
+    if (auction.status !== AuctionStatus.FINISHED) {
+      auction.status = AuctionStatus.FINISHED;
+    }
+    auction.markModified('biddableClues');
+    await auction.save();
 
     game.status = GameStatus.ACTIVE;
     game.startedAt = new Date();

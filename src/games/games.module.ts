@@ -10,6 +10,7 @@ import { PlayerAchievement, PlayerAchievementSchema } from './schemas/player-ach
 import { Auction, AuctionSchema } from 'src/pujas/schemas/auction.schema';
 import { Bid, BidSchema } from 'src/pujas/schemas/bid.schema';
 import { Sponsor, SponsorSchema } from 'src/sponsor/schemas/sponsor.schema';
+import { GameSponsorAssociation, GameSponsorAssociationSchema } from 'src/gamesponsor/schemas/gamesponsor.schema';
 import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
       { name: Auction.name, schema: AuctionSchema },
       { name: Bid.name, schema: BidSchema },
       { name: Sponsor.name, schema: SponsorSchema },
+      { name: GameSponsorAssociation.name, schema: GameSponsorAssociationSchema },
       // ✅ NUEVO
     ]),
     CloudinaryModule,
