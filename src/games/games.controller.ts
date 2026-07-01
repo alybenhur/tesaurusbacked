@@ -753,4 +753,36 @@ export class GamesController {
     }
   }
 
+  /**
+   * PATCH /api/games/:gameId/clues/:clueId/finalize
+   * Finaliza una pista (estado de preparación UPDATED). Queda bloqueada e
+   * inmodificable. Solo permitido en WAITING y con la subasta ya cerrada.
+   */
+  @Patch(':gameId/clues/:clueId/finalize')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async finalizeClue(
+    @Param('gameId') gameId: string,
+    @Param('clueId') clueId: string,
+  ) {
+    try {
+      const clue = await this.gamesService.finalizeClue(gameId, clueId);
+      return {
+        success: true,
+        message: 'Pista finalizada exitosamente',
+        data: { clue, gameId },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al finalizar la pista',
+        error: error.message,
+      });
+    }
+  }
+
 }

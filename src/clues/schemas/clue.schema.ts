@@ -7,6 +7,17 @@ export enum ClueStatus {
   REVEALED = 'revealed',
 }
 
+/**
+ * Estado de PREPARACIÓN de la pista (distinto del estado de juego ClueStatus).
+ * - PENDING: la pista aún no ha sido actualizada por el admin tras cerrar la subasta.
+ * - UPDATED: la pista fue finalizada por el admin; su información queda bloqueada
+ *   y NO puede volver a modificarse. Es el estado final de preparación.
+ */
+export enum ClueSetupStatus {
+  PENDING = 'pending',
+  UPDATED = 'updated',
+}
+
 @Schema()
 export class ClueLocation {
   @Prop({ required: true })
@@ -57,6 +68,13 @@ export class Clue extends Document {
 
   @Prop({ enum: ClueStatus, default: ClueStatus.HIDDEN })
   status: ClueStatus;
+
+  // ✅ NUEVO: estado de preparación (setup). Al finalizar queda bloqueada.
+  @Prop({ enum: ClueSetupStatus, default: ClueSetupStatus.PENDING })
+  setupStatus: ClueSetupStatus;
+
+  @Prop()
+  finalizedAt?: Date;
 
   @Prop({ type: Types.ObjectId, ref: 'User' })
   discoveredBy?: Types.ObjectId;

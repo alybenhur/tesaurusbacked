@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Game, GameDocument, GameStatus } from './schemas/game.schema';
-import { Clue, ClueDocument, ClueStatus } from '../clues/schemas/clue.schema';
+import { Clue, ClueDocument, ClueStatus, ClueSetupStatus } from '../clues/schemas/clue.schema';
 import { CreateGameDto } from './dto/create-game.dto';
 //import { UpdateGameDto } from './dto/update-game.dto';
 import { CreateClueDto } from '../clues/dto/create-clue.dto';
@@ -518,6 +518,25 @@ export class GamesService {
       throw new BadRequestException(
         `No se puede iniciar el juego: la subasta aún no ha cerrado. ` +
         `Cierra el ${auction.closingDate.toLocaleString('es-CO', { timeZone: 'America/Bogota' })}.`,
+      );
+    }
+
+    // ✅ REGLA: todas las pistas del juego (subastadas y no subastadas) deben
+    // haber sido finalizadas (setupStatus = UPDATED) antes de iniciar.
+    const pendingClues = await this.clueModel
+      .find({
+        gameId: new Types.ObjectId(gameId),
+        setupStatus: { $ne: ClueSetupStatus.UPDATED },
+      })
+      .select('title order')
+      .sort({ order: 1 })
+      .exec();
+
+    if (pendingClues.length > 0) {
+      const nombres = pendingClues.map(c => c.title).join(', ');
+      throw new BadRequestException(
+        `No se puede iniciar el juego: faltan ${pendingClues.length} pista(s) por finalizar su ` +
+        `información tras la subasta: ${nombres}.`,
       );
     }
 
@@ -2259,6 +2278,13 @@ export class GamesService {
         throw new BadRequestException('La pista no pertenece al juego especificado');
       }
 
+      // 5.1 ✅ BLOQUEO: una pista finalizada no puede modificarse (estado final)
+      if (existingClue.setupStatus === ClueSetupStatus.UPDATED) {
+        throw new BadRequestException(
+          'Esta pista ya fue finalizada y su información no puede modificarse.'
+        );
+      }
+
       // 6. Preparar datos de actualización
       const updateData: any = {};
 
@@ -2318,6 +2344,62 @@ export class GamesService {
   }
 
   /**
+   * Finaliza una pista: marca su preparación como UPDATED (estado final).
+   * A partir de aquí la pista queda bloqueada y no puede modificarse.
+   * Solo se permite cuando el juego está en WAITING y la subasta ya cerró.
+   */
+  async finalizeClue(gameId: string, clueId: string): Promise<Clue> {
+    if (!Types.ObjectId.isValid(gameId)) {
+      throw new BadRequestException(`ID de juego inválido: ${gameId}`);
+    }
+    if (!Types.ObjectId.isValid(clueId)) {
+      throw new BadRequestException(`ID de pista inválido: ${clueId}`);
+    }
+
+    const game = await this.gameModel.findById(gameId).exec();
+    if (!game) {
+      throw new NotFoundException(`Juego con ID ${gameId} no encontrado`);
+    }
+    if (game.status !== GameStatus.WAITING) {
+      throw new BadRequestException(
+        `Solo se pueden finalizar pistas de un juego en estado WAITING (actual: ${game.status}).`
+      );
+    }
+
+    // ✅ REGLA: solo se puede finalizar pistas después de que la subasta haya cerrado
+    const auction = await this.auctionModel
+      .findOne({ gameId: new Types.ObjectId(gameId) })
+      .exec();
+    if (!auction) {
+      throw new BadRequestException(
+        'No se pueden finalizar pistas: este juego aún no tiene una subasta.'
+      );
+    }
+    if (auction.closingDate > new Date()) {
+      throw new BadRequestException(
+        'No se pueden finalizar pistas hasta que la subasta haya cerrado.'
+      );
+    }
+
+    const clue = await this.clueModel.findById(clueId).exec();
+    if (!clue) {
+      throw new NotFoundException(`Pista con ID ${clueId} no encontrada`);
+    }
+    if (clue.gameId.toString() !== gameId) {
+      throw new BadRequestException('La pista no pertenece al juego especificado');
+    }
+    if (clue.setupStatus === ClueSetupStatus.UPDATED) {
+      throw new BadRequestException('Esta pista ya fue finalizada.');
+    }
+
+    clue.setupStatus = ClueSetupStatus.UPDATED;
+    clue.finalizedAt = new Date();
+    await clue.save();
+
+    return clue;
+  }
+
+  /**
    * Sube una imagen a Cloudinary para una pista
    */
   async uploadClueImage(gameId: string, clueId: string, file: Express.Multer.File): Promise<Clue> {
@@ -2338,6 +2420,11 @@ export class GamesService {
       }
       if (clue.gameId.toString() !== gameId) {
         throw new BadRequestException('La pista no pertenece al juego especificado');
+      }
+      if (clue.setupStatus === ClueSetupStatus.UPDATED) {
+        throw new BadRequestException(
+          'Esta pista ya fue finalizada y su imagen no puede modificarse.'
+        );
       }
 
       // 3. Subir a Cloudinary (usando inyección retardada o importación si no se inyectó en constructor)
