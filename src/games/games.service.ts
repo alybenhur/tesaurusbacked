@@ -2428,18 +2428,35 @@ export class GamesService {
       .sort({ order: 1 })
       .exec();
 
-    // Asignaciones de sponsor por pista (clueId != null)
+    // 1) Asignaciones FINALES de sponsor por pista (se crean al iniciar el juego
+    //    o para pistas excluidas asignadas manualmente).
     const associations = await this.gameSponsorModel
       .find({ gameId: new Types.ObjectId(gameId), clueId: { $ne: null } })
       .exec();
-
-    const clueIdToSponsorId = new Map<string, string>();
+    const clueIdToAssignedSponsor = new Map<string, string>();
     associations.forEach(a => {
-      if (a.clueId) clueIdToSponsorId.set(a.clueId.toString(), a.sponsorId.toString());
+      if (a.clueId) clueIdToAssignedSponsor.set(a.clueId.toString(), a.sponsorId.toString());
     });
 
-    // Cargar sponsors involucrados
-    const sponsorIds = [...new Set([...clueIdToSponsorId.values()])];
+    // 2) Subasta del juego: pistas que entraron en subasta y su ganador ACTUAL.
+    const auction = await this.auctionModel
+      .findOne({ gameId: new Types.ObjectId(gameId) })
+      .exec();
+    const clueIdToBiddable = new Map<string, { bidderId?: string; currentBid: number }>();
+    if (auction) {
+      auction.biddableClues.forEach(bc => {
+        clueIdToBiddable.set(bc.clueId.toString(), {
+          bidderId: bc.currentBidderId ? bc.currentBidderId.toString() : undefined,
+          currentBid: bc.currentBid,
+        });
+      });
+    }
+
+    // Cargar todos los sponsors involucrados (asignados + ganadores actuales)
+    const sponsorIds = [...new Set([
+      ...clueIdToAssignedSponsor.values(),
+      ...[...clueIdToBiddable.values()].map(b => b.bidderId).filter(Boolean) as string[],
+    ])];
     const sponsors = sponsorIds.length > 0
       ? await this.sponsorModel
           .find({ _id: { $in: sponsorIds.map(id => new Types.ObjectId(id)) } })
@@ -2448,31 +2465,58 @@ export class GamesService {
       : [];
     const sponsorMap = new Map(sponsors.map(s => [s._id.toString(), s]));
 
-    return clues.map(clue => {
-      const sponsorId = clueIdToSponsorId.get(clue._id.toString());
-      const sponsor = sponsorId ? sponsorMap.get(sponsorId) : null;
+    const buildSponsor = (clue: any, sponsor: any, status: string, currentBid?: number) => ({
+      clueId: clue._id.toString(),
+      clueTitle: clue.title,
+      isAdmin: false,
+      status, // 'assigned' | 'winning'
+      sponsorName: sponsor.nombreEmpresa,
+      representanteLegal: sponsor.representanteLegal,
+      celular: sponsor.celular,
+      correo: sponsor.correo,
+      currentBid: currentBid ?? null,
+    });
 
-      if (sponsor) {
+    return clues.map(clue => {
+      const clueIdStr = clue._id.toString();
+
+      // a) Asignación final (ganador tras cerrar/iniciar) — tiene prioridad
+      const assignedId = clueIdToAssignedSponsor.get(clueIdStr);
+      if (assignedId && sponsorMap.has(assignedId)) {
+        return buildSponsor(clue, sponsorMap.get(assignedId), 'assigned');
+      }
+
+      // b) Pista en subasta: mostrar el sponsor que va GANANDO actualmente
+      const biddable = clueIdToBiddable.get(clueIdStr);
+      if (biddable) {
+        if (biddable.bidderId && sponsorMap.has(biddable.bidderId)) {
+          return buildSponsor(clue, sponsorMap.get(biddable.bidderId), 'winning', biddable.currentBid);
+        }
+        // En subasta pero sin pujas todavía
         return {
-          clueId: clue._id.toString(),
+          clueId: clueIdStr,
           clueTitle: clue.title,
           isAdmin: false,
-          sponsorName: sponsor.nombreEmpresa,
-          representanteLegal: sponsor.representanteLegal,
-          celular: sponsor.celular,
-          correo: sponsor.correo,
+          status: 'no_bids',
+          sponsorName: null,
+          representanteLegal: null,
+          celular: null,
+          correo: null,
+          currentBid: null,
         };
       }
 
-      // Sin asignación → el sponsor es el admin del juego
+      // c) No entró en subasta ni tiene asignación → el sponsor es el admin
       return {
-        clueId: clue._id.toString(),
+        clueId: clueIdStr,
         clueTitle: clue.title,
         isAdmin: true,
+        status: 'admin',
         sponsorName: admin?.name ?? 'Administrador',
         representanteLegal: null,
         celular: null,
         correo: admin?.email ?? null,
+        currentBid: null,
       };
     });
   }
