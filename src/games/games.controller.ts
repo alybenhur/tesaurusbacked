@@ -754,6 +754,34 @@ export class GamesController {
   }
 
   /**
+   * GET /api/games/:id/clue-sponsors
+   * Devuelve el sponsor de cada pista (nombre, celular, correo) o indica que
+   * el sponsor es el admin del juego si la pista no entró en subasta.
+   */
+  @Get(':id/clue-sponsors')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async getGameCluesSponsors(@Param('id') id: string) {
+    try {
+      const data = await this.gamesService.getGameCluesSponsors(id);
+      return {
+        success: true,
+        message: 'Sponsors de las pistas obtenidos exitosamente',
+        data,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al obtener los sponsors de las pistas',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
    * PATCH /api/games/:gameId/clues/:clueId/finalize
    * Finaliza una pista (estado de preparación UPDATED). Queda bloqueada e
    * inmodificable. Solo permitido en WAITING y con la subasta ya cerrada.

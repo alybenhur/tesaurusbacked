@@ -14,6 +14,7 @@ import { Auction, AuctionDocument, AuctionStatus } from '../pujas/schemas/auctio
 import { Bid, BidDocument } from '../pujas/schemas/bid.schema';
 import { Sponsor, SponsorDocument } from '../sponsor/schemas/sponsor.schema';
 import { GameSponsorAssociation, GameSponsorAssociationDocument } from '../gamesponsor/schemas/gamesponsor.schema';
+import { User, UserDocument } from '../auth/schemas/user.schema';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 
 @Injectable()
@@ -25,6 +26,7 @@ export class GamesService {
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>, // NUEVO
     @InjectModel(Sponsor.name) private sponsorModel: Model<SponsorDocument>,
     @InjectModel(GameSponsorAssociation.name) private gameSponsorModel: Model<GameSponsorAssociationDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(PlayerProgress.name) private playerProgressModel: Model<PlayerProgressDocument>,
     @InjectModel(CollaborativeAttempt.name) private collaborativeAttemptModel: Model<CollaborativeAttemptDocument>,
     @InjectModel(PlayerAchievement.name) private playerAchievementModel: Model<PlayerAchievementDocument>,
@@ -2397,6 +2399,82 @@ export class GamesService {
     await clue.save();
 
     return clue;
+  }
+
+  /**
+   * Devuelve, por cada pista del juego, la información de su sponsor.
+   * - Si la pista tiene un sponsor asignado (ganó la subasta): nombre, celular y correo.
+   * - Si la pista NO entró en subasta (sin asignación): el sponsor es el admin del juego.
+   */
+  async getGameCluesSponsors(gameId: string): Promise<any[]> {
+    if (!Types.ObjectId.isValid(gameId)) {
+      throw new BadRequestException(`ID de juego inválido: ${gameId}`);
+    }
+
+    const game = await this.gameModel.findById(gameId).exec();
+    if (!game) {
+      throw new NotFoundException(`Juego con ID ${gameId} no encontrado`);
+    }
+
+    // Info del admin del juego (para las pistas sin sponsor)
+    const admin = Types.ObjectId.isValid(game.adminId)
+      ? await this.userModel.findById(game.adminId).select('name email').exec()
+      : null;
+
+    // Pistas del juego, ordenadas
+    const clues = await this.clueModel
+      .find({ gameId: new Types.ObjectId(gameId) })
+      .select('_id title order')
+      .sort({ order: 1 })
+      .exec();
+
+    // Asignaciones de sponsor por pista (clueId != null)
+    const associations = await this.gameSponsorModel
+      .find({ gameId: new Types.ObjectId(gameId), clueId: { $ne: null } })
+      .exec();
+
+    const clueIdToSponsorId = new Map<string, string>();
+    associations.forEach(a => {
+      if (a.clueId) clueIdToSponsorId.set(a.clueId.toString(), a.sponsorId.toString());
+    });
+
+    // Cargar sponsors involucrados
+    const sponsorIds = [...new Set([...clueIdToSponsorId.values()])];
+    const sponsors = sponsorIds.length > 0
+      ? await this.sponsorModel
+          .find({ _id: { $in: sponsorIds.map(id => new Types.ObjectId(id)) } })
+          .select('_id nombreEmpresa representanteLegal celular correo')
+          .exec()
+      : [];
+    const sponsorMap = new Map(sponsors.map(s => [s._id.toString(), s]));
+
+    return clues.map(clue => {
+      const sponsorId = clueIdToSponsorId.get(clue._id.toString());
+      const sponsor = sponsorId ? sponsorMap.get(sponsorId) : null;
+
+      if (sponsor) {
+        return {
+          clueId: clue._id.toString(),
+          clueTitle: clue.title,
+          isAdmin: false,
+          sponsorName: sponsor.nombreEmpresa,
+          representanteLegal: sponsor.representanteLegal,
+          celular: sponsor.celular,
+          correo: sponsor.correo,
+        };
+      }
+
+      // Sin asignación → el sponsor es el admin del juego
+      return {
+        clueId: clue._id.toString(),
+        clueTitle: clue.title,
+        isAdmin: true,
+        sponsorName: admin?.name ?? 'Administrador',
+        representanteLegal: null,
+        celular: null,
+        correo: admin?.email ?? null,
+      };
+    });
   }
 
   /**
