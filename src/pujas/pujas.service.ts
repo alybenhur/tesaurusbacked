@@ -1,9 +1,10 @@
-import { 
-  Injectable, 
-  BadRequestException, 
+import {
+  Injectable,
+  BadRequestException,
   NotFoundException,
-  ConflictException 
+  ConflictException
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { 
@@ -50,6 +51,30 @@ export class AuctionService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(GameSponsorAssociation.name) private gameSponsorModel: Model<GameSponsorAssociationDocument>,
   ) {}
+
+  /**
+   * Cron job: cierra automáticamente las subastas cuya fecha de cierre ya
+   * pasó, aunque nadie las consulte. Sin esto, una subasta vencida queda
+   * en estado 'active' en la BD indefinidamente.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES, {
+    name: 'close-expired-auctions',
+  })
+  async closeExpiredAuctions(): Promise<number> {
+    const result = await this.auctionModel.updateMany(
+      {
+        status: AuctionStatus.ACTIVE,
+        closingDate: { $lt: new Date() },
+      },
+      { $set: { status: AuctionStatus.FINISHED } },
+    );
+    if (result.modifiedCount > 0) {
+      console.log(
+        `⏰ Subastas vencidas cerradas automáticamente: ${result.modifiedCount}`,
+      );
+    }
+    return result.modifiedCount;
+  }
 
   // Método helper para buscar subasta por gameId (maneja string y ObjectId)
   private async findAuctionByGameId(gameId: string): Promise<AuctionDocument | null> {
@@ -1813,9 +1838,20 @@ async getAuctionResults(
 
   // ✅ MEJORA 2: Buscar la subasta por gameId con logging
   console.log(`📊 Fetching auction results for game: ${gameId}`);
-  
-  const auction = await this.auctionModel.findOne({ 
-    gameId: new Types.ObjectId(gameId) 
+
+  // Cierre perezoso: si la fecha de cierre ya pasó y el estado sigue en
+  // 'active', se marca como 'finished' antes de consultar los resultados.
+  await this.auctionModel.updateOne(
+    {
+      gameId: new Types.ObjectId(gameId),
+      status: AuctionStatus.ACTIVE,
+      closingDate: { $lt: new Date() },
+    },
+    { $set: { status: AuctionStatus.FINISHED } },
+  );
+
+  const auction = await this.auctionModel.findOne({
+    gameId: new Types.ObjectId(gameId)
   }).lean();
 
   if (!auction) {
