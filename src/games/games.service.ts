@@ -2465,11 +2465,17 @@ export class GamesService {
       : [];
     const sponsorMap = new Map(sponsors.map(s => [s._id.toString(), s]));
 
+    // ¿La subasta ya cerró? (por estado o porque la fecha de cierre venció)
+    const auctionClosed = auction
+      ? auction.status !== AuctionStatus.ACTIVE ||
+        auction.closingDate < new Date()
+      : false;
+
     const buildSponsor = (clue: any, sponsor: any, status: string, currentBid?: number) => ({
       clueId: clue._id.toString(),
       clueTitle: clue.title,
       isAdmin: false,
-      status, // 'assigned' | 'winning'
+      status, // 'assigned' | 'winning' | 'won'
       sponsorName: sponsor.nombreEmpresa,
       representanteLegal: sponsor.representanteLegal,
       celular: sponsor.celular,
@@ -2486,18 +2492,24 @@ export class GamesService {
         return buildSponsor(clue, sponsorMap.get(assignedId), 'assigned');
       }
 
-      // b) Pista en subasta: mostrar el sponsor que va GANANDO actualmente
+      // b) Pista en subasta: si la subasta sigue activa el postor "va ganando"
+      //    ('winning', provisional); si ya cerró, es el ganador definitivo ('won').
       const biddable = clueIdToBiddable.get(clueIdStr);
       if (biddable) {
         if (biddable.bidderId && sponsorMap.has(biddable.bidderId)) {
-          return buildSponsor(clue, sponsorMap.get(biddable.bidderId), 'winning', biddable.currentBid);
+          return buildSponsor(
+            clue,
+            sponsorMap.get(biddable.bidderId),
+            auctionClosed ? 'won' : 'winning',
+            biddable.currentBid,
+          );
         }
-        // En subasta pero sin pujas todavía
+        // En subasta sin pujas: aún abierta → 'no_bids'; cerrada → 'no_winner'
         return {
           clueId: clueIdStr,
           clueTitle: clue.title,
           isAdmin: false,
-          status: 'no_bids',
+          status: auctionClosed ? 'no_winner' : 'no_bids',
           sponsorName: null,
           representanteLegal: null,
           celular: null,
