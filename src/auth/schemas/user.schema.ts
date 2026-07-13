@@ -22,6 +22,11 @@ export class User {
   @Prop({ required: true, minlength: 6 })
   password: string;
 
+  // Celular de contacto (requerido para nuevos registros de jugadores;
+  // opcional en el esquema por compatibilidad con usuarios existentes)
+  @Prop({ type: String, trim: true })
+  celular?: string;
+
   @Prop({ type: String, enum: UserRole, default: UserRole.PLAYER })
   role: UserRole;
 

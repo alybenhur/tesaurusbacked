@@ -41,7 +41,7 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    let  { email, password, name, role = UserRole.PLAYER } = registerDto;
+    let  { email, password, name, celular, role = UserRole.PLAYER } = registerDto;
 
     // Verificar si el usuario ya existe
     const existingUser = await this.userModel.findOne({ email  }).exec();
@@ -50,12 +50,13 @@ export class AuthService {
     }
 
     role = UserRole.PLAYER
-    
+
     // Crear nuevo usuario
     const user = new this.userModel({
       name,
       email,
       password, // Se hasheará automáticamente por el middleware del schema
+      celular,
       role,
       lastLogin: new Date(),
     });
