@@ -43,4 +43,12 @@ export class UpdateSponsorDto {
   @IsNotEmpty({ message: 'El logo no puede estar vacío' })
   @Transform(({ value }) => value?.trim())
   logo?: string;
+
+  @IsOptional()
+  @IsUrl({}, { message: 'El sitio web debe ser una URL válida' })
+  @Transform(({ value }) => {
+    const v = value?.trim();
+    return v === '' ? undefined : v;
+  })
+  sitioWeb?: string;
 }

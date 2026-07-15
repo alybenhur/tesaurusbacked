@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEmail, IsUrl, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, IsEmail, IsUrl, Matches, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateSponsorDto {
@@ -37,4 +37,12 @@ export class CreateSponsorDto {
   @IsNotEmpty({ message: 'El logo es obligatorio' })
   @Transform(({ value }) => value?.trim())
   logo: string;
+
+  @IsOptional()
+  @IsUrl({}, { message: 'El sitio web debe ser una URL válida' })
+  @Transform(({ value }) => {
+    const v = value?.trim();
+    return v === '' ? undefined : v;
+  })
+  sitioWeb?: string;
 }

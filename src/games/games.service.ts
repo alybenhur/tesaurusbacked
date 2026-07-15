@@ -2402,6 +2402,59 @@ export class GamesService {
   }
 
   /**
+   * Sección de patrocinadores del juego: combina, sin duplicados, los
+   * sponsors que ganaron pistas del juego ('pista') y los patrocinadores
+   * generales agregados manualmente por el admin ('general', clueId null).
+   * Devuelve logo y sitioWeb para mostrar el logo clickeable en la app.
+   */
+  async getGamePatrocinadores(gameId: string): Promise<any[]> {
+    if (!Types.ObjectId.isValid(gameId)) {
+      throw new BadRequestException(`ID de juego inválido: ${gameId}`);
+    }
+
+    const game = await this.gameModel.findById(gameId).exec();
+    if (!game) {
+      throw new NotFoundException(`Juego con ID ${gameId} no encontrado`);
+    }
+
+    // Todas las asociaciones activas del juego (de pista y generales)
+    const associations = await this.gameSponsorModel
+      .find({ gameId: new Types.ObjectId(gameId), isActive: { $ne: false } })
+      .exec();
+
+    if (associations.length === 0) return [];
+
+    // Deduplicar por sponsor: si tiene al menos una asociación de pista,
+    // el tipo es 'pista'; si solo tiene la general, es 'general'.
+    const tipoBySponsor = new Map<string, string>();
+    for (const a of associations) {
+      const sponsorId = a.sponsorId.toString();
+      const esPista = a.clueId !== null && a.clueId !== undefined;
+      const actual = tipoBySponsor.get(sponsorId);
+      if (esPista || actual === undefined) {
+        tipoBySponsor.set(sponsorId, esPista ? 'pista' : (actual ?? 'general'));
+      }
+    }
+
+    const sponsors = await this.sponsorModel
+      .find({
+        _id: {
+          $in: [...tipoBySponsor.keys()].map(id => new Types.ObjectId(id)),
+        },
+      })
+      .select('_id nombreEmpresa logo sitioWeb')
+      .exec();
+
+    return sponsors.map(s => ({
+      sponsorId: s._id.toString(),
+      nombreEmpresa: s.nombreEmpresa,
+      logo: s.logo,
+      sitioWeb: (s as any).sitioWeb ?? null,
+      tipo: tipoBySponsor.get(s._id.toString()) ?? 'general',
+    }));
+  }
+
+  /**
    * Devuelve, por cada pista del juego, la información de su sponsor.
    * - Si la pista tiene un sponsor asignado (ganó la subasta): nombre, celular y correo.
    * - Si la pista NO entró en subasta (sin asignación): el sponsor es el admin del juego.

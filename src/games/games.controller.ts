@@ -754,6 +754,35 @@ export class GamesController {
   }
 
   /**
+   * GET /api/games/:id/patrocinadores
+   * Sección de patrocinadores del juego: lista combinada y sin duplicados de
+   * los sponsors que ganaron pistas ('pista') y los patrocinadores generales
+   * agregados por el admin ('general'). Cada item trae logo y sitioWeb para
+   * mostrar el logo clickeable en la app.
+   */
+  @Get(':id/patrocinadores')
+  @UseGuards(JwtAuthGuard)
+  async getGamePatrocinadores(@Param('id') id: string) {
+    try {
+      const data = await this.gamesService.getGamePatrocinadores(id);
+      return {
+        success: true,
+        message: 'Patrocinadores del juego obtenidos exitosamente',
+        data,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: 'Error al obtener los patrocinadores del juego',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
    * GET /api/games/:id/clue-sponsors
    * Devuelve el sponsor de cada pista (nombre, celular, correo) o indica que
    * el sponsor es el admin del juego si la pista no entró en subasta.

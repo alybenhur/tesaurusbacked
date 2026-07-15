@@ -45,11 +45,16 @@ export class Sponsor {
   })
   correo: string;
 
-  @Prop({ 
+  @Prop({
     required: true,
     trim: true
   })
   logo: string;
+
+  // Página web del patrocinador (opcional): al tocar el logo en la sección
+  // de patrocinadores del juego se abre esta URL
+  @Prop({ trim: true })
+  sitioWeb?: string;
 
   @Prop({ default: Date.now })
   createdAt: Date;
